@@ -426,8 +426,8 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
 
   useEffect(() => { modeRef.current = viewMode; }, [viewMode]);
 
-  const TERRAIN_SIZE = 40;
-  const TERRAIN_SEG = 120;
+  const TERRAIN_SIZE = 200;
+  const TERRAIN_SEG = 160;
 
   const clusterData = useMemo(() => {
     if (!clusters || clusters.length === 0) return [];
@@ -500,7 +500,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
 
     const scene = new THREE.Scene();
     // No fog — stars and terrain need to be fully visible in both modes
-    const cam = new THREE.PerspectiveCamera(60, w / h, 0.01, 500);
+    const cam = new THREE.PerspectiveCamera(60, w / h, 0.1, 800);
     const ren = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     ren.setSize(w, h); ren.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     ren.setClearColor(0x060504, 1); ren.toneMapping = THREE.ACESFilmicToneMapping;
@@ -533,14 +533,14 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     scene.add(terrainMesh);
 
     // Terrain wireframe overlay
-    const terrainWireGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, 50, 50);
+    const terrainWireGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, 80, 80);
     terrainWireGeo.rotateX(-Math.PI / 2);
     const terrainWireMat = new THREE.MeshBasicMaterial({ color: 0xd4a574, wireframe: true, transparent: true, opacity: 0.025 });
     const terrainWireMesh = new THREE.Mesh(terrainWireGeo, terrainWireMat);
     terrainWireMesh.position.y = 0.02; scene.add(terrainWireMesh);
 
     // Ambient particles floating above terrain
-    const particleCount = 300;
+    const particleCount = 800;
     const particleGeo = new THREE.BufferGeometry();
     const particlePos = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
@@ -940,9 +940,9 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         for (let i = 0; i < tPos.count; i++) {
           const vx = tPos.getX(i), vz = tPos.getZ(i);
 
-          // Base terrain from fbm (matches original COIL exactly)
-          let elev = fbm3D(vx * 0.35 + t * 0.08, 0, vz * 0.35 + t * 0.05, 5) * 0.7;
-          elev += Math.sin(vx * 0.3 + t * 0.2) * Math.cos(vz * 0.3 + t * 0.15) * 0.2;
+          // Base terrain from fbm — scaled for larger terrain
+          let elev = fbm3D(vx * 0.08 + t * 0.04, 0, vz * 0.08 + t * 0.03, 5) * 1.2;
+          elev += Math.sin(vx * 0.06 + t * 0.1) * Math.cos(vz * 0.06 + t * 0.08) * 0.4;
 
           // Base color: warm earth tones (original palette)
           const nh = (elev + 1) / 2.2;
@@ -958,25 +958,24 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
           // Cluster deformations on flat terrain
           for (const cluster of clusterData) {
             const d = Math.hypot(vx - cluster.planeX, vz - cluster.planeZ);
-            const radius = 2.5 + Math.min(cluster.frequency * 0.3, 2);
+            const radius = 8 + Math.min(cluster.frequency * 1.5, 10);
             const influence = Math.max(0, 1 - d / radius);
             if (influence > 0) {
               const eased = influence * influence * (3 - 2 * influence);
               if (cluster.trend === "stress") {
-                elev -= eased * cluster.craterScale * 6;
-                // Strong emotion color saturation — the terrain GLOWS with feeling
-                const glow = 0.4 + Math.min(cluster.frequency * 0.06, 0.4);
+                elev -= eased * cluster.craterScale * 25;
+                const glow = 0.5 + Math.min(cluster.frequency * 0.08, 0.5);
                 cr += eased * cluster.colorData.r * glow;
                 cg += eased * cluster.colorData.g * glow * 0.6;
                 cb += eased * cluster.colorData.b * glow * 0.6;
               } else if (cluster.trend === "resolved") {
-elev += eased * cluster.flareScale * 5 * (1 + Math.sin(t * 0.8) * 0.06);
-                const glow = 0.45 + Math.min(cluster.frequency * 0.06, 0.4);
+                elev += eased * cluster.flareScale * 20 * (1 + Math.sin(t * 0.8) * 0.06);
+                const glow = 0.55 + Math.min(cluster.frequency * 0.08, 0.5);
                 cr += eased * cluster.colorData.r * glow;
                 cg += eased * cluster.colorData.g * glow;
                 cb += eased * cluster.colorData.b * glow * 0.8;
               } else {
-                elev += eased * cluster.neutralScale * 2;
+                elev += eased * cluster.neutralScale * 8;
                 cr += eased * cluster.colorData.r * 0.3;
                 cg += eased * cluster.colorData.g * 0.3;
                 cb += eased * cluster.colorData.b * 0.25;
