@@ -757,65 +757,337 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     const starField = new THREE.Points(starGeo, starMat);
     scene.add(starField);
 
-    // ═══ NEBULAE: Distant, subtle gas clouds — NOT close blobs ═══
+    // ═══ DEEP SPACE ENVIRONMENT — NASA-grade cosmic backdrop ═══
+    // Everything below creates a layered, volumetric space that feels
+    // alive and deep without competing with the COIL thought terrain.
+
+    // ── NEBULAE: Multi-layered volumetric gas clouds ──
+    // Each nebula is built from multiple overlapping shells at different
+    // scales/opacities to create real depth, not flat blobs.
     const nebulaGroup = new THREE.Group();
-    const nebulaEmotions = ["anxiety","peace","love","sadness","joy","hope","clarity","confidence"];
-    nebulaEmotions.forEach((em, idx) => {
-      const ec = EMOTION_COLORS[em] || EMOTION_COLORS.neutral;
-      // Far away, large, very transparent — like real nebulae seen from distance
-      const nebGeo = new THREE.SphereGeometry(15 + Math.random() * 20, 8, 8);
-      const nebMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(ec.r * 0.8, ec.g * 0.8, ec.b * 0.8),
-        transparent: true, opacity: 0.008 + Math.random() * 0.008,
+    const nebulaConfigs = [
+      // { emotion, angle (radians), dist, scale, shells }
+      { color: [0.35, 0.15, 0.55], angle: 0.3, dist: 110, scale: 28, tilt: 0.2 },      // deep violet
+      { color: [0.18, 0.35, 0.60], angle: 1.1, dist: 140, scale: 35, tilt: -0.3 },     // cerulean blue
+      { color: [0.55, 0.20, 0.25], angle: 2.0, dist: 95, scale: 22, tilt: 0.4 },       // ember red
+      { color: [0.20, 0.45, 0.35], angle: 2.9, dist: 130, scale: 30, tilt: -0.15 },    // teal
+      { color: [0.50, 0.35, 0.15], angle: 3.8, dist: 105, scale: 25, tilt: 0.35 },     // amber gold
+      { color: [0.30, 0.20, 0.50], angle: 4.7, dist: 150, scale: 40, tilt: -0.25 },    // indigo
+      { color: [0.45, 0.15, 0.40], angle: 5.5, dist: 120, scale: 32, tilt: 0.1 },      // magenta
+    ];
+    nebulaConfigs.forEach(cfg => {
+      const cx = Math.cos(cfg.angle) * cfg.dist;
+      const cy = Math.sin(cfg.tilt) * cfg.dist * 0.2;
+      const cz = Math.sin(cfg.angle) * cfg.dist;
+      // Multiple shells per nebula for volumetric depth
+      const shellCount = 5;
+      for (let s = 0; s < shellCount; s++) {
+        const shellScale = cfg.scale * (0.4 + s * 0.2);
+        const shellOp = (0.012 - s * 0.0015) * (1 + Math.random() * 0.3);
+        const geo = new THREE.SphereGeometry(shellScale, 12, 12);
+        // Deform vertices for organic cloud shape
+        const verts = geo.attributes.position;
+        for (let v = 0; v < verts.count; v++) {
+          const vx = verts.getX(v), vy = verts.getY(v), vz = verts.getZ(v);
+          const n = fbm3D(vx * 0.08 + s * 3, vy * 0.08, vz * 0.08, 3);
+          const scale = 1 + n * 0.35;
+          verts.setXYZ(v, vx * scale, vy * scale * (0.5 + Math.random() * 0.3), vz * scale);
+        }
+        verts.needsUpdate = true;
+        const r = cfg.color[0] + s * 0.03, g = cfg.color[1] + s * 0.02, b = cfg.color[2] + s * 0.03;
+        const mat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(r, g, b),
+          transparent: true, opacity: Math.max(0.003, shellOp),
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(
+          cx + (Math.random() - 0.5) * shellScale * 0.3,
+          cy + (Math.random() - 0.5) * shellScale * 0.2,
+          cz + (Math.random() - 0.5) * shellScale * 0.3
+        );
+        mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        nebulaGroup.add(mesh);
+      }
+      // Bright inner core glow
+      const coreGeo = new THREE.SphereGeometry(cfg.scale * 0.15, 8, 8);
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(cfg.color[0] * 1.5, cfg.color[1] * 1.5, cfg.color[2] * 1.5),
+        transparent: true, opacity: 0.02,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
-      const neb = new THREE.Mesh(nebGeo, nebMat);
-      const angle = (idx / nebulaEmotions.length) * Math.PI * 2;
-      const dist = 60 + Math.random() * 80;
-      neb.position.set(
-        Math.cos(angle) * dist,
-        (Math.random() - 0.5) * 30,
-        Math.sin(angle) * dist
-      );
-      neb.scale.set(1.5, 0.6 + Math.random() * 0.4, 1.5);
-      nebulaGroup.add(neb);
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.set(cx, cy, cz);
+      nebulaGroup.add(core);
     });
     scene.add(nebulaGroup);
 
-    // ═══ COMETS: A few slow-moving streaks in the distance ═══
+    // ── DISTANT PLANETS: Large celestial bodies on the horizon ──
+    const distantBodies = new THREE.Group();
+    const planetConfigs = [
+      // Gas giant — banded, warm colors, large
+      { dist: 180, angle: 0.8, elev: 25, radius: 12, color: 0x8b6b4a, ring: true, ringColor: 0xa08060, tilt: 0.4 },
+      // Ice planet — blue-white, medium, far
+      { dist: 220, angle: 3.2, elev: -15, radius: 8, color: 0x4a6a8b, ring: false, tilt: 0.15 },
+      // Rocky body — small, reddish, close-ish
+      { dist: 90, angle: 5.0, elev: 35, radius: 3.5, color: 0x8b5a4a, ring: false, tilt: 0.3 },
+      // Distant moon — tiny, pale, very far
+      { dist: 260, angle: 1.9, elev: -30, radius: 4, color: 0x7a7a7a, ring: false, tilt: 0.05 },
+    ];
+    planetConfigs.forEach(cfg => {
+      const px = Math.cos(cfg.angle) * cfg.dist;
+      const py = cfg.elev;
+      const pz = Math.sin(cfg.angle) * cfg.dist;
+
+      // Planet sphere with subtle shading
+      const pGeo = new THREE.SphereGeometry(cfg.radius, 32, 32);
+      const pMat = new THREE.MeshStandardMaterial({
+        color: cfg.color, roughness: 0.85, metalness: 0.02,
+        emissive: cfg.color, emissiveIntensity: 0.08,
+      });
+      const pMesh = new THREE.Mesh(pGeo, pMat);
+      pMesh.position.set(px, py, pz);
+      pMesh.rotation.z = cfg.tilt;
+      distantBodies.add(pMesh);
+
+      // Atmosphere glow for each planet
+      const aGeo = new THREE.SphereGeometry(cfg.radius * 1.08, 24, 24);
+      const baseColor = new THREE.Color(cfg.color);
+      const aMat = new THREE.ShaderMaterial({
+        vertexShader: `varying vec3 vNormal; varying vec3 vWorldPos;
+          void main() { vNormal = normalize(normalMatrix * normal); vWorldPos = (modelMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `varying vec3 vNormal; varying vec3 vWorldPos; uniform vec3 uCamPos; uniform vec3 uColor;
+          void main() { vec3 viewDir = normalize(uCamPos - vWorldPos); float rim = 1.0 - max(0.0, dot(vNormal, viewDir)); float i = pow(rim, 3.0); gl_FragColor = vec4(uColor, i * 0.12); }`,
+        uniforms: { uCamPos: { value: new THREE.Vector3() }, uColor: { value: new THREE.Vector3(baseColor.r, baseColor.g, baseColor.b) } },
+        side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+      });
+      const aMesh = new THREE.Mesh(aGeo, aMat);
+      aMesh.position.set(px, py, pz);
+      distantBodies.add(aMesh);
+
+      // Rings for gas giant
+      if (cfg.ring) {
+        const ringGeo = new THREE.RingGeometry(cfg.radius * 1.4, cfg.radius * 2.2, 64);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: cfg.ringColor, transparent: true, opacity: 0.06,
+          side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(px, py, pz);
+        ringMesh.rotation.x = Math.PI / 2 + cfg.tilt;
+        ringMesh.rotation.y = 0.3;
+        distantBodies.add(ringMesh);
+
+        // Second thinner ring for depth
+        const ring2Geo = new THREE.RingGeometry(cfg.radius * 1.6, cfg.radius * 1.85, 64);
+        const ring2Mat = new THREE.MeshBasicMaterial({
+          color: 0xc8a878, transparent: true, opacity: 0.035,
+          side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        const ring2Mesh = new THREE.Mesh(ring2Geo, ring2Mat);
+        ring2Mesh.position.set(px, py, pz);
+        ring2Mesh.rotation.x = Math.PI / 2 + cfg.tilt;
+        ring2Mesh.rotation.y = 0.3;
+        distantBodies.add(ring2Mesh);
+      }
+    });
+
+    // ── DISTANT BRIGHT STARS (suns): Large glowing orbs ──
+    const sunConfigs = [
+      { dist: 300, angle: 0.5, elev: 60, radius: 5, color: [1.0, 0.9, 0.7], intensity: 0.04 },  // warm yellow
+      { dist: 350, angle: 2.8, elev: -50, radius: 3.5, color: [0.7, 0.8, 1.0], intensity: 0.03 },  // blue white
+      { dist: 280, angle: 4.2, elev: 40, radius: 2, color: [1.0, 0.6, 0.4], intensity: 0.025 },   // red dwarf
+    ];
+    sunConfigs.forEach(cfg => {
+      const sx = Math.cos(cfg.angle) * cfg.dist;
+      const sy = cfg.elev;
+      const sz = Math.sin(cfg.angle) * cfg.dist;
+
+      // Bloom core
+      const sGeo = new THREE.SphereGeometry(cfg.radius, 16, 16);
+      const sMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(cfg.color[0], cfg.color[1], cfg.color[2]),
+        transparent: true, opacity: 0.3,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const sMesh = new THREE.Mesh(sGeo, sMat);
+      sMesh.position.set(sx, sy, sz);
+      distantBodies.add(sMesh);
+
+      // Wide glow halo
+      const hGeo = new THREE.SphereGeometry(cfg.radius * 4, 16, 16);
+      const hMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(cfg.color[0] * 0.6, cfg.color[1] * 0.6, cfg.color[2] * 0.6),
+        transparent: true, opacity: cfg.intensity,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const hMesh = new THREE.Mesh(hGeo, hMat);
+      hMesh.position.set(sx, sy, sz);
+      distantBodies.add(hMesh);
+
+      // Lens flare cross — subtle light rays
+      const flareGeo = new THREE.PlaneGeometry(cfg.radius * 12, cfg.radius * 0.3);
+      const flareMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(cfg.color[0], cfg.color[1], cfg.color[2]),
+        transparent: true, opacity: 0.015,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const flare1 = new THREE.Mesh(flareGeo, flareMat);
+      flare1.position.set(sx, sy, sz);
+      flare1.userData.isFlare = true;
+      flare1.userData.baseRotZ = 0;
+      distantBodies.add(flare1);
+      const flare2 = new THREE.Mesh(flareGeo.clone(), flareMat.clone());
+      flare2.position.set(sx, sy, sz);
+      flare2.userData.isFlare = true;
+      flare2.userData.baseRotZ = Math.PI / 2;
+      distantBodies.add(flare2);
+    });
+    scene.add(distantBodies);
+
+    // ── ASTEROID BELT: Ring of tiny rocky fragments ──
+    const asteroidBelt = new THREE.Group();
+    const asteroidCount = 600;
+    const beltGeo = new THREE.BufferGeometry();
+    const beltPos = new Float32Array(asteroidCount * 3);
+    const beltSizes = new Float32Array(asteroidCount);
+    const beltColors = new Float32Array(asteroidCount * 3);
+
+    for (let i = 0; i < asteroidCount; i++) {
+      // Torus-shaped distribution — belt around the mid-plane
+      const beltAngle = Math.random() * Math.PI * 2;
+      const beltRadius = 38 + Math.random() * 18; // donut from 38-56 units
+      const beltThickness = (Math.random() - 0.5) * 4; // vertical spread
+      const wobble = (Math.random() - 0.5) * 6; // radial scatter
+
+      beltPos[i*3]     = Math.cos(beltAngle) * (beltRadius + wobble);
+      beltPos[i*3 + 1] = beltThickness + Math.sin(beltAngle * 3 + i) * 0.8;
+      beltPos[i*3 + 2] = Math.sin(beltAngle) * (beltRadius + wobble);
+
+      beltSizes[i] = 0.06 + Math.random() * 0.18;
+      // Asteroid colors: grays, browns, occasional metallic glint
+      const shade = 0.3 + Math.random() * 0.25;
+      const warmth = Math.random() * 0.08;
+      beltColors[i*3]     = shade + warmth;
+      beltColors[i*3 + 1] = shade;
+      beltColors[i*3 + 2] = shade - warmth * 0.5;
+    }
+    beltGeo.setAttribute("position", new THREE.BufferAttribute(beltPos, 3));
+    beltGeo.setAttribute("size", new THREE.BufferAttribute(beltSizes, 1));
+    beltGeo.setAttribute("color", new THREE.BufferAttribute(beltColors, 3));
+
+    const beltMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float size; attribute vec3 color; varying vec3 vColor; varying float vDist;
+        void main() { vColor = color; vec4 mvp = modelViewMatrix * vec4(position, 1.0);
+          vDist = -mvp.z; gl_PointSize = size * (120.0 / -mvp.z); gl_Position = projectionMatrix * mvp; }`,
+      fragmentShader: `
+        varying vec3 vColor; varying float vDist;
+        void main() { float d = length(gl_PointCoord - vec2(0.5)); if (d > 0.45) discard;
+          float shape = 1.0 - smoothstep(0.0, 0.45, d);
+          float fade = clamp(1.0 - vDist / 300.0, 0.1, 1.0);
+          gl_FragColor = vec4(vColor * shape, shape * 0.7 * fade); }`,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const beltPoints = new THREE.Points(beltGeo, beltMat);
+    // Tilt belt ~15 degrees for visual interest
+    beltPoints.rotation.x = 0.26;
+    beltPoints.rotation.z = 0.1;
+    asteroidBelt.add(beltPoints);
+
+    // A few larger "hero" asteroids — actual geometry, not points
+    for (let i = 0; i < 8; i++) {
+      const aSize = 0.3 + Math.random() * 0.6;
+      const aGeo = new THREE.IcosahedronGeometry(aSize, 0);
+      // Deform for irregular rocky shape
+      const aVerts = aGeo.attributes.position;
+      for (let v = 0; v < aVerts.count; v++) {
+        const scale = 0.7 + Math.random() * 0.6;
+        aVerts.setXYZ(v, aVerts.getX(v) * scale, aVerts.getY(v) * scale, aVerts.getZ(v) * scale);
+      }
+      aVerts.needsUpdate = true;
+      aGeo.computeVertexNormals();
+      const aMat = new THREE.MeshStandardMaterial({
+        color: 0x5a5045, roughness: 0.95, metalness: 0.1, flatShading: true,
+        emissive: 0x2a2520, emissiveIntensity: 0.3,
+      });
+      const aMesh = new THREE.Mesh(aGeo, aMat);
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 40 + Math.random() * 14;
+      aMesh.position.set(
+        Math.cos(angle) * radius,
+        (Math.random() - 0.5) * 3,
+        Math.sin(angle) * radius
+      );
+      aMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      aMesh.userData = { orbitAngle: angle, orbitRadius: radius, spinSpeed: 0.001 + Math.random() * 0.003 };
+      asteroidBelt.add(aMesh);
+    }
+    scene.add(asteroidBelt);
+
+    // ── COSMIC DUST: Ultra-fine ambient particles layered at multiple depths ──
+    // These are NOT thought stars — they're atmospheric, like looking through
+    // a lens at deep space. Multiple layers at different distances.
+    const cosmicDustGroup = new THREE.Group();
+    const dustLayers = [
+      { count: 3000, minR: 15, maxR: 60, size: 0.015, opacity: 0.2, color: 0xc8beb0 },  // near dust
+      { count: 2000, minR: 60, maxR: 150, size: 0.025, opacity: 0.12, color: 0xa09888 },  // mid dust
+      { count: 1500, minR: 150, maxR: 350, size: 0.04, opacity: 0.06, color: 0x807060 },  // far dust
+    ];
+    dustLayers.forEach(layer => {
+      const dGeo = new THREE.BufferGeometry();
+      const dPos = new Float32Array(layer.count * 3);
+      for (let i = 0; i < layer.count; i++) {
+        const r = layer.minR + Math.random() * (layer.maxR - layer.minR);
+        const th = Math.random() * Math.PI * 2;
+        const ph = Math.acos(2 * Math.random() - 1);
+        dPos[i*3]     = r * Math.sin(ph) * Math.cos(th);
+        dPos[i*3 + 1] = r * Math.cos(ph);
+        dPos[i*3 + 2] = r * Math.sin(ph) * Math.sin(th);
+      }
+      dGeo.setAttribute("position", new THREE.BufferAttribute(dPos, 3));
+      const dMat = new THREE.PointsMaterial({
+        color: layer.color, size: layer.size, transparent: true, opacity: layer.opacity,
+        blending: THREE.AdditiveBlending, sizeAttenuation: true, depthWrite: false,
+      });
+      const dPoints = new THREE.Points(dGeo, dMat);
+      cosmicDustGroup.add(dPoints);
+    });
+    scene.add(cosmicDustGroup);
+
+    // ── COMETS: Longer tails, more dramatic ──
     const cometGroup = new THREE.Group();
     for (let i = 0; i < 5; i++) {
       const cometGeo = new THREE.BufferGeometry();
-      const tailLen = 8;
+      const tailLen = 14; // longer tails
       const cometPositions = new Float32Array(tailLen * 3);
       const cometOpacities = new Float32Array(tailLen);
-      // Random position in far space
-      const cx = (Math.random() - 0.5) * 120;
-      const cy = (Math.random() - 0.5) * 60;
-      const cz = 40 + Math.random() * 80;
+      const cx = (Math.random() - 0.5) * 160;
+      const cy = (Math.random() - 0.5) * 80;
+      const cz = 50 + Math.random() * 100;
       const dx = (Math.random() - 0.5) * 0.8;
       const dy = (Math.random() - 0.5) * 0.3;
       for (let j = 0; j < tailLen; j++) {
-        cometPositions[j*3] = cx - dx * j * 1.5;
-        cometPositions[j*3+1] = cy - dy * j * 1.5;
+        cometPositions[j*3] = cx - dx * j * 1.8;
+        cometPositions[j*3+1] = cy - dy * j * 1.8;
         cometPositions[j*3+2] = cz;
-        cometOpacities[j] = 1.0 - j / tailLen;
+        cometOpacities[j] = 1.0 - (j / tailLen);
       }
       cometGeo.setAttribute("position", new THREE.BufferAttribute(cometPositions, 3));
       cometGeo.setAttribute("opacity", new THREE.BufferAttribute(cometOpacities, 1));
       const cometMat = new THREE.ShaderMaterial({
         vertexShader: `attribute float opacity; varying float vOpacity;
-          void main() { vOpacity = opacity; gl_PointSize = mix(3.0, 1.0, 1.0 - opacity);
+          void main() { vOpacity = opacity; gl_PointSize = mix(4.0, 1.0, 1.0 - opacity);
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying float vOpacity;
           void main() { float d = length(gl_PointCoord - vec2(0.5));
             if (d > 0.5) discard;
-            float a = (1.0 - d * 2.0) * vOpacity * 0.6;
-            gl_FragColor = vec4(0.9, 0.85, 0.7, a); }`,
+            float a = (1.0 - d * 2.0) * vOpacity * 0.7;
+            gl_FragColor = vec4(0.95, 0.88, 0.72, a); }`,
         transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
       });
       const comet = new THREE.Points(cometGeo, cometMat);
-      comet.userData = { speed: 0.02 + Math.random() * 0.03, dx, dy };
+      comet.userData = { speed: 0.015 + Math.random() * 0.025, dx, dy };
       cometGroup.add(comet);
     }
     scene.add(cometGroup);
@@ -830,7 +1102,8 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       scene, cam, ren,
       terrainMesh, terrainGeo, terrainWireMesh, particles, particleGeo,
       planet, sphereGeo, wireMesh, atmosMat, atmosMesh,
-      starField, nebulaGroup, cometGroup, pl, ambientLight, hemiLight, dl, dl2, dl3,
+      starField, nebulaGroup, cometGroup, distantBodies, asteroidBelt, cosmicDustGroup,
+      pl, ambientLight, hemiLight, dl, dl2, dl3,
       surfaceMarkerGroup, planetMarkerGroup,
     };
 
@@ -1302,9 +1575,37 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         });
       }
 
-      // Galaxy spin
+      // ── Cosmic rotation — everything at different rates for parallax depth ──
       starField.rotation.y += 0.00008;
-      nebulaGroup.rotation.y += 0.00005;
+      nebulaGroup.rotation.y += 0.00004;
+      nebulaGroup.rotation.x += 0.000008; // very subtle tilt drift
+      cosmicDustGroup.rotation.y += 0.00006;
+      cosmicDustGroup.rotation.x += 0.00001;
+      distantBodies.rotation.y += 0.00002; // planets barely move
+      asteroidBelt.rotation.y += 0.00025; // belt orbits slowly
+
+      // Spin hero asteroids on their axes
+      asteroidBelt.children.forEach(child => {
+        if (child.isMesh && child.userData.spinSpeed) {
+          child.rotation.x += child.userData.spinSpeed;
+          child.rotation.z += child.userData.spinSpeed * 0.7;
+        }
+      });
+
+      // Update distant planet atmosphere uniforms
+      distantBodies.children.forEach(child => {
+        if (child.material && child.material.uniforms && child.material.uniforms.uCamPos) {
+          child.material.uniforms.uCamPos.value.copy(cam.position);
+        }
+      });
+
+      // Lens flares always face camera
+      distantBodies.children.forEach(child => {
+        if (child.userData && child.userData.isFlare) {
+          child.quaternion.copy(cam.quaternion);
+          child.rotateZ(child.userData.baseRotZ);
+        }
+      });
 
       // Animate comets — slow drift across the sky
       cometGroup.children.forEach(comet => {
@@ -1315,14 +1616,13 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
           pos.setY(j, pos.getY(j) + ud.speed * ud.dy);
         }
         pos.needsUpdate = true;
-        // Reset comet when it drifts too far
-        if (Math.abs(pos.getX(0)) > 200) {
-          const cx = (Math.random() - 0.5) * 120;
-          const cy = (Math.random() - 0.5) * 60;
-          const cz = 40 + Math.random() * 80;
+        if (Math.abs(pos.getX(0)) > 250) {
+          const cx = (Math.random() - 0.5) * 160;
+          const cy = (Math.random() - 0.5) * 80;
+          const cz = 50 + Math.random() * 100;
           for (let j = 0; j < pos.count; j++) {
-            pos.setX(j, cx - ud.dx * j * 1.5);
-            pos.setY(j, cy - ud.dy * j * 1.5);
+            pos.setX(j, cx - ud.dx * j * 1.8);
+            pos.setY(j, cy - ud.dy * j * 1.8);
             pos.setZ(j, cz);
           }
           pos.needsUpdate = true;
