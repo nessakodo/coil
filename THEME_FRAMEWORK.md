@@ -3,11 +3,13 @@
 
 This document defines the complete stylistic, structural, and behavioral architecture of COIL's 3D thought terrain. It serves as the canonical reference for building additional planet themes.
 
+**Philosophy**: You are already capable. You just need a mirror with memory. COIL never gives advice. Never coaches. Never nudges. It just reflects.
+
 ---
 
 ## Architecture Overview
 
-COIL is a single-file React + Three.js application (`COIL.jsx`) that maps user thoughts onto an explorable 3D terrain. The entire rendering pipeline, audio engine, and UI exist in one component tree with no external state management.
+COIL is a single-file React + Three.js application (`COIL.jsx`) that maps user thoughts onto an explorable 3D terrain. The entire rendering pipeline, audio engine, and UI exist in one component tree with no external state management. The planet is a complete world. Your inner world has geography. It has weather. It has seasons.
 
 ### Dual View System
 
@@ -69,55 +71,88 @@ Terrain and planet mesh use `emissive` for self-illumination, reducing dependenc
 
 ## Thought Representation
 
-### Visual Hierarchy: Mini-Diamonds → Diamonds
+### Design Principle: White Diamonds with Emotion Aura
+All diamond markers (every lifecycle stage) share a core visual identity: WHITE gem bodies with emotion-colored outer glow. The diamond itself is always a clean, sleek, white crystal (linear gradient #fff → #dddbe6). The emotion color lives in the surrounding glow halo and a faint (12-15%) overlay bleed. This ensures diamonds read as sharp, faceted gems from any distance while the emotion aura creates the living color field visible from orbit.
 
-Every thought is visible as a gem on the terrain. The system uses a two-tier diamond hierarchy:
+### Growth Lifecycle: Seed → Crystal → Cluster → Formation → Landmark
 
-**Mini-Diamonds (individual thoughts)** — each submitted thought renders as a small, persistent, clickable diamond sprite:
-- Canvas: 48x64 pixels (same proportional shape as big diamonds)
-- Visual: WHITE faceted gem body (linear gradient #fff → #dddbe6) with subtle emotion-colored outer glow halo, facet lines in #b8b4c8, crisp white edge stroke, core sparkle
+> **Implementation status**: Stages 1-2 (Seed and Crystal) are fully built. Stages 3-5 (Cluster, Formation, Landmark) and the temporal color evolution system are specced and ready for implementation. The theme object structure supports all five stages.
+
+Every thought pattern follows a five-stage lifecycle. The base visual unit is always the diamond, but it grows in complexity, scale, and terrain influence as more thoughts feed the pattern.
+
+**Stage 1: Seed (1-2 entries)** — individual thought, the first mark on the planet
+- What it is now: Mini-diamonds. Each submitted thought renders as a small, persistent, clickable white diamond sprite
+- Canvas: 48x64 pixels (proportional gem shape)
+- Visual: WHITE faceted gem body with subtle emotion-colored outer glow halo, facet lines in #b8b4c8, crisp white edge stroke, core sparkle
 - SpriteMaterial with AdditiveBlending + premultiplyAlpha
 - Non-uniform scale: 1:1.35 ratio (matching gem proportions)
-- Surface scale: 0.18 (aggregated, orbiting) / 0.35 (standalone), elevated 1.8+ units above terrain (floats like big diamonds)
+- Surface scale: 0.18 (aggregated, orbiting) / 0.35 (standalone), elevated 1.8+ units above terrain
 - Planet scale: 0.018 (aggregated) / 0.032 (standalone)
-- Animation: Gentle pulse at 3.5 Hz + seed variation, amplitude 0.2x base, maintains gem proportions
+- Animation: Gentle pulse at 3.5 Hz + seed variation, amplitude 0.2x base
+- Sound on click: `miniDiamondClick` (glass marble drop — sine 2400→1600 Hz through highpass + metallic ping at 4200 Hz)
+- Behavior: Fixed position based on keyword hash, gentle pulse. Click opens ThoughtPopup showing raw thought text, emotion, timestamp, and growth progress bar (X/3 toward crystal)
 
-**Click behavior**: Clicking a mini-diamond opens ThoughtPopup showing the raw thought text, emotion tag, timestamp, and aggregation progress bar (X/3 toward diamond). Plays `miniDiamondClick` sound (glass marble drop — sine 2400→1600 Hz through highpass + metallic ping at 4200 Hz).
-
-**Standalone behavior**: Fixed position based on keyword hash, gentle pulse
-
-**Aggregated behavior** (parent cluster freq >= 3): Orbits the big diamond center at 0.4-0.7 rad/s, orbit radius = 60% of spread distance, elevated at 1.0 units with gentle bob
-
-### Mini-Diamond to Diamond Transformation
-When a cluster crosses threshold 3, all associated mini-diamonds play a convergence animation:
-1. Mini-diamonds accelerate their orbit (spin speed 2.0 → 8.0 rad/s)
-2. Orbit radius shrinks by 85% (converging toward center)
-3. Mini-diamonds rise then descend (y: 1.2 + 1.5 → 1.2)
-4. Brightness increases 1.5x → 3x during convergence, scale maintained with gem proportions
-5. `transform` sound plays: ascending cascade (330-880 Hz) + crystallization snap
-6. After 1.5s, the big diamond marker appears with its formation animation
-- Uses ease-in acceleration for a natural gravity-pull feel
-
-### Aggregated Clusters (Big Diamonds)
-When a keyword reaches frequency 3+, mini-diamonds coalesce into a large diamond marker:
-- Canvas: 64x96 pixels (taller canvas for elongated gem shape)
-- Visual: Tall WHITE faceted gem body (linear gradient #fff → #dddbe6) with 15% emotion-color overlay bleed, facet cut lines in #b8b4c8, crisp white edge stroke (0.8 opacity), dual sparkle points (upper + lower)
-- Glow halo: emotion-colored radial gradient bloom at reduced intensity (max 40% alpha at center), creating a colored aura around the white gem
-- SpriteMaterial with AdditiveBlending + premultiplyAlpha
-- Non-uniform scale: width x height ratio 1:1.4 for authentic gem silhouette
+**Stage 2: Crystal (3-5 entries)** — the first coalescence, pattern is real
+- What it is now: Big diamonds. When a keyword reaches frequency 3+, seeds coalesce into a large diamond marker
+- Canvas: 64x96 pixels (taller canvas for elongated gem)
+- Visual: Tall WHITE faceted gem body with 15% emotion-color overlay bleed, facet cut lines in #b8b4c8, dual sparkle points (upper + lower)
+- Glow halo: emotion-colored radial gradient bloom at reduced intensity (max 40% alpha at center)
+- Non-uniform scale: 1:1.4 ratio for authentic gem silhouette
 - Formation animation: 2-second easeInOutCubic scale-up from 0
 - Pulse: 2.5 Hz sinusoidal, amplitude 0.15x base
-- Surface elevation: 2.0+ units above terrain (scales with frequency and flare)
+- Surface elevation: 2.0+ units (scales with frequency and flare)
 - Surface scale: 0.55 + min(freq * 0.06, 0.4)
 - Planet scale: 0.06 + min(freq * 0.007, 0.05)
+- Sound on click: `diamondClick` (cathedral bell — C4 fundamental + 4 harmonics, 1.2s decay + sub rumble 82 Hz)
+- Behavior: Click opens ClusterPopup showing all thoughts in the cluster
 
-**Crater/Flare Type Indicators**: Each big diamond has detached, subtle arc wisps that signal terrain type without blurring the gem silhouette:
-- **Crater (stress)**: Two thin arcs positioned BELOW the diamond body (botY + 4/6), radius 14/10px, alpha 0.1 + freq*0.03 (max 0.35). Suggests depth/sinking.
+**Stage 3: Cluster (6-10 entries)** — the pattern is deepening, visible from mid-orbit
+- Visual: Multiple crystal geometries growing from the same terrain anchor point. The central diamond grows taller, and 2-3 smaller satellite crystals sprout at angular offsets around its base (like a crystal formation growing from rock)
+- Scale: Central diamond 1.3x stage 2 size. Satellite crystals at 40-60% of central size
+- New: Faint connecting filaments (thin glowing lines) between central and satellite crystals
+- Terrain influence: Subtle vertex displacement begins radiating outward from the cluster center (0.5-unit radius)
+- Glow intensifies: outer halo radius grows 1.5x, alpha ceiling rises to 50%
+- Sound: `diamondClick` gains an additional harmonic layer (5th overtone)
+- Planet view: Clearly visible as a distinct bright point with structure
+
+**Stage 4: Formation (11-20 entries)** — a defining feature of the planet's geography
+- Visual: The crystal cluster becomes a terrain feature. Contour lines (thin glowing rings) radiate outward from the formation on the planet surface, like topographic elevation markers
+- Scale: Central structure 1.8x stage 2 size. 4-6 satellite crystals arranged in a natural growth pattern
+- New: Visible label appears in planet view (keyword name in small monospace text, fades with distance). Contour lines (3-5 concentric ground-level rings at increasing radii) pulse slowly
+- Terrain influence: Significant vertex displacement (2-unit radius), the formation visibly raises or depresses the terrain around it
+- From orbit: unmistakable. The formation has its own light signature and contour pattern
+
+**Stage 5: Landmark (20+ entries)** — a major feature of the inner world
+- Visual: Monumental crystal structure with particle system. Tiny luminous particles orbit the landmark in a slow spiral, like dust caught in a gravity well
+- Scale: Central structure 2.5x stage 2 size. Full crystal garden at base
+- New: Orbiting particle cloud (50-100 small points in a toroidal orbit pattern). Permanent name label visible from orbit. Custom sound on approach (ambient harmonic drone fades in within 5 units on surface)
+- Terrain influence: Major displacement (4-unit radius), the landmark defines a geographic region. Other nearby clusters are visually subordinate
+- From orbit: the most prominent features on the planet. These are the mountains, the volcanoes, the great forests of the mental world
+
+### Lifecycle Transitions
+
+**Seed → Crystal (threshold 3)**: All associated seeds play a convergence animation:
+1. Seeds accelerate their orbit (spin speed 2.0 → 8.0 rad/s)
+2. Orbit radius shrinks by 85% (converging toward center)
+3. Seeds rise then descend (y: 1.2 + 1.5 → 1.2)
+4. Brightness increases 1.5x → 3x during convergence
+5. `transform` sound plays: ascending cascade (330-880 Hz) + crystallization snap
+6. After 1.5s, the crystal marker appears with its formation animation
+- Uses ease-in acceleration for a natural gravity-pull feel
+
+**Crystal → Cluster (threshold 6)**: The existing diamond pulses bright, then satellite crystals emerge from its base over 2 seconds. A deeper `transform` variant plays (lower octave, more harmonics). The terrain begins to subtly respond.
+
+**Cluster → Formation (threshold 11)**: Contour lines ripple outward from the cluster center. The formation "claims" its territory on the planet. A sustained resonant tone plays. The label fades in from orbit view.
+
+**Formation → Landmark (threshold 20)**: The particle cloud ignites. A deep, slow ascending chord plays over 3 seconds. The terrain displacement reaches its maximum radius. The landmark is now a permanent geographic feature of the mind.
+
+### Crater/Flare Type Indicators
+Each crystal-stage-and-above marker has detached, subtle arc wisps that signal terrain type without blurring the gem silhouette:
+- **Crater (stress)**: Two thin arcs positioned BELOW the diamond body (botY + 4/6), radius 14/10px, alpha 0.1 + freq*0.03 (max 0.35). Suggests depth/sinking into terrain.
 - **Flare (resolved)**: Two thin arcs positioned ABOVE the diamond body (topY - 4/6), radius 14/10px, same alpha. Suggests rising energy.
 - **Neutral**: Full ring at freq 5+ pushed outward (radius 24px, alpha 0.15, lineWidth 0.6)
 - All indicators use emotion color but are spatially separated from the gem body so the diamond reads as a clean sharp shape from any distance
-
-**Click behavior**: Diamond clicks play a `diamondClick` sound (cathedral bell — triangle fundamental C4 at 262 Hz + 4 harmonic overtones with long 1.2s decay, sub rumble at 82 Hz through lowpass) and open ClusterPopup showing all thoughts in the cluster.
+- At cluster stage and above, indicator arcs scale up proportionally with the central crystal
 
 ### Birth Animation
 When a thought is submitted, a centered overlay plays:
@@ -153,6 +188,35 @@ Cool Resolved:
 Neutral:
   neutral:     #d4a574
 ```
+
+### Temporal Color Evolution
+
+Colors are not static. They evolve based on the emotional trajectory of a thought pattern over time. This is the planet breathing.
+
+**Color states based on pattern trajectory:**
+- **Active/New (default)**: Amber (#d4a574) — warm, alive, present. This is the starting color for any new pattern.
+- **Stress trajectory (frequency increasing)**: Shifts toward clay/red (#d4a574 → #c4785a → #a04a3a). The terrain literally reddens as a thought loop intensifies. Triggers when a pattern receives 3+ entries in the last 7 days with increasing frequency.
+- **Resolving trajectory (frequency decreasing)**: Shifts toward sage green (#d4a574 → #7a9b7a → #a0c8a0). The terrain cools and softens as a pattern loses urgency. Triggers when a pattern has been decreasing in frequency over 14+ days.
+- **Dormant (no entries in 14+ days)**: Shifts toward stone gray (#d4a574 → #8a8278 → #6a6a6a). The pattern fossilizes. It is still there, still visible, but it has gone quiet.
+- **Resurfaced (dormant then active again)**: Brief bloom of bright gold (#f0c896) lasting 48 hours before settling back to the active color. The planet remembers and lights up when an old pattern returns.
+
+**Implementation:**
+- Each cluster stores `lastEntryTimestamp`, `entryTimestamps[]` (last 30), and a computed `trajectory` value
+- Trajectory = rolling 14-day frequency delta. Positive = stress. Negative = resolving. Zero for 14+ days = dormant.
+- Color shift happens gradually: each render frame interpolates 1% toward the target color (lerp). This means color changes are visible over hours/days, not seconds
+- The emotion-specific color (anger red, joy gold, etc.) is the base. The trajectory overlay modulates it: stress warms/reddens ANY emotion, resolving cools/greens ANY emotion, dormancy desaturates toward gray
+- The trajectory color affects: terrain vertex colors around the cluster, the glow halo of the diamond marker, the contour lines (formation+), and the particle cloud (landmark)
+- The diamond body itself stays WHITE. Only the aura and terrain respond to trajectory
+
+**Color interpolation formula:**
+```
+targetColor = lerpColor(emotionBaseColor, trajectoryTargetColor, trajectoryStrength)
+trajectoryStrength = clamp(abs(trajectory) / maxTrajectory, 0, 0.6)
+// Max 60% shift — the original emotion color is always visible underneath
+```
+
+**Terrain erosion (dormant patterns):**
+When a pattern goes dormant (14+ days no activity), its terrain displacement amplitude decreases by 2% per day of continued inactivity. The mountains slowly flatten. The craters fill in. The planet surface smooths over time, reflecting how the mind naturally lets go of patterns that are no longer active. If the pattern reactivates, erosion stops and displacement rebuilds at the normal rate.
 
 ### Planet Terrain Detail
 The planet sphere uses multi-layer displacement for rich visual texture:
@@ -352,18 +416,21 @@ To create a new planet theme, define these parameters:
 4. **Terrain deformation** — crater/flare/neutral scale multipliers per frequency tier
 5. **Star field distribution** — milky way band angle, star color probabilities
 6. **Lighting** — ambient/hemisphere/directional colors and intensities per mode
+7. **Lifecycle visual definitions** — what each growth stage looks like in this world
 
 ### Optional
-7. **Nebula configs** — array of { color, angle, distance, scale, tilt }
-8. **Distant bodies** — planet configs with ring/atmosphere options
-9. **Sun configs** — { distance, angle, color, intensity }
-10. **Asteroid belt** — radius range, count, color palette
-11. **Audio variants** — oscillator types, frequency ranges, envelope shapes
-12. **Typography** — font families, sizes, weights
-13. **Wireframe** — color, opacity, segment count
-14. **Atmosphere shader** — rim power, color, intensity
+8. **Nebula configs** — array of { color, angle, distance, scale, tilt }
+9. **Distant bodies** — planet configs with ring/atmosphere options
+10. **Sun configs** — { distance, angle, color, intensity }
+11. **Asteroid belt** — radius range, count, color palette
+12. **Audio variants** — oscillator types, frequency ranges, envelope shapes per lifecycle stage
+13. **Typography** — font families, sizes, weights
+14. **Wireframe** — color, opacity, segment count
+15. **Atmosphere shader** — rim power, color, intensity
+16. **Trajectory color overrides** — custom stress/resolving/dormant/resurfaced target colors
+17. **Erosion rate** — custom terrain decay rate for dormant patterns (default 2%/day)
 
-### Theme Object Structure (proposed)
+### Theme Object Structure
 ```javascript
 const THEME = {
   id: "default",
@@ -376,6 +443,40 @@ const THEME = {
   audio: { submitFreqs, impactRange, coalesceHarmonics },
   typography: { heading, body, mono },
   atmosphere: { rimPower, rimIntensity, color },
+
+  // ── Lifecycle (v0.4+) ──
+  lifecycle: {
+    thresholds: [1, 3, 6, 11, 20],  // seed, crystal, cluster, formation, landmark
+    stages: {
+      seed:      { label: "Seed",      scaleMultiplier: 1.0 },
+      crystal:   { label: "Crystal",   scaleMultiplier: 1.0 },
+      cluster:   { label: "Cluster",   scaleMultiplier: 1.3, satelliteCount: [2, 3] },
+      formation: { label: "Formation", scaleMultiplier: 1.8, contourRings: [3, 5], labelVisible: true },
+      landmark:  { label: "Landmark",  scaleMultiplier: 2.5, particleCount: [50, 100], labelVisible: true, ambientDrone: true },
+    },
+    // Custom draw functions per stage (null = use default diamond with scale multiplier)
+    drawSeed: null,       // (ctx, cx, cy, emotionColor) => void
+    drawCrystal: null,    // (ctx, cx, cy, emotionColor, frequency) => void
+    drawCluster: null,    // (ctx, cx, cy, emotionColor, frequency, satellitePositions) => void
+    drawFormation: null,  // (ctx, cx, cy, emotionColor, frequency) => void
+    drawLandmark: null,   // (ctx, cx, cy, emotionColor, frequency) => void
+  },
+
+  // ── Color Evolution (v0.4+) ──
+  evolution: {
+    trajectoryWindow: 14,           // days to compute trajectory over
+    dormantThreshold: 14,           // days of inactivity before dormant
+    erosionRate: 0.02,              // terrain displacement decay per day when dormant
+    resurfacedBloomDuration: 48,    // hours of gold bloom when dormant pattern reactivates
+    maxTrajectoryShift: 0.6,        // max color shift toward trajectory target (0-1)
+    colors: {
+      stress:     "#a04a3a",        // target color for intensifying patterns
+      resolving:  "#a0c8a0",        // target color for calming patterns
+      dormant:    "#6a6a6a",        // target color for inactive patterns
+      resurfaced: "#f0c896",        // bloom color for reactivated patterns
+    },
+    lerpSpeed: 0.01,                // per-frame color interpolation rate (1%)
+  },
 };
 ```
 
@@ -394,4 +495,4 @@ coil/
 
 ---
 
-*COIL v0.3 — a lirio labs instrument*
+*COIL v0.4 — a lirio labs instrument*

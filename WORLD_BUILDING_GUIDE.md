@@ -1,13 +1,15 @@
 # COIL World Building Guide
 ### Creating New Themed Planets — Lirio Labs
 
-This document is the practical handoff for creating new COIL worlds. Each world is a themed planet with its own visual identity, sound design, and thought-to-terrain mapping system. The core mechanics (dual camera, keyword hashing, aggregation threshold, mini-diamond → diamond hierarchy) stay the same. Everything else is a theme variable.
+This document is the practical handoff for creating new COIL worlds. Each world is a themed planet with its own visual identity, sound design, thought lifecycle, and temporal evolution. The core mechanics (dual camera, keyword hashing, growth lifecycle, color evolution) stay the same. Everything else is a theme variable.
+
+**Philosophy**: You are already capable. You just need a mirror with memory. COIL never gives advice. Never coaches. Never nudges. It just reflects. The planet IS the reflection.
 
 ---
 
 ## How Themes Work
 
-A COIL theme defines the sensory layer on top of the engine. When a user submits a thought, the engine extracts keywords, detects emotion, hashes to coordinates, and checks aggregation thresholds. The theme controls what that looks like, sounds like, and feels like.
+A COIL theme defines the sensory layer on top of the engine. When a user submits a thought, the engine extracts keywords, detects emotion, hashes to coordinates, tracks frequency over time, and advances the pattern through a five-stage growth lifecycle. The theme controls what each stage looks like, sounds like, and feels like. The theme also defines how colors evolve over time as patterns intensify, resolve, go dormant, or resurface.
 
 ### Theme Object Structure
 
@@ -71,10 +73,10 @@ const THEME = {
     ],
   },
 
-  // ── Markers (what thoughts look like) ──
+  // ── Markers (what thoughts look like at each lifecycle stage) ──
   markers: {
-    // Mini-diamond (individual thought)
-    mini: {
+    // Stage 1: Seed (1-2 entries) — individual thought
+    seed: {
       canvas: [48, 64],        // width x height
       glowRadius: 28,
       halfWidth: 11,
@@ -87,8 +89,8 @@ const THEME = {
       pulseAmplitude: 0.2,
       aspectRatio: 1.35,       // height:width
     },
-    // Big diamond (aggregated cluster)
-    big: {
+    // Stage 2: Crystal (3-5 entries) — first coalescence
+    crystal: {
       canvas: [64, 96],
       glowRadius: 40,
       halfWidth: 16,
@@ -102,10 +104,57 @@ const THEME = {
       aspectRatio: 1.4,
       formationDuration: 2000,  // ms
     },
-    // Shape function — can be overridden for completely different marker shapes
-    // Default draws a faceted diamond. Themes can draw trees, runes, crystals, etc.
-    drawMini: null,  // (ctx, cx, cy, emotionColor) => void
-    drawBig: null,   // (ctx, cx, cy, emotionColor, frequency) => void
+    // Stage 3: Cluster (6-10 entries) — deepening pattern
+    cluster: {
+      scaleMultiplier: 1.3,     // relative to crystal stage
+      satelliteCount: [2, 3],   // min, max satellite crystals
+      satelliteScale: 0.5,      // relative to central crystal
+      filamentOpacity: 0.2,     // connecting line brightness
+      terrainInfluenceRadius: 0.5, // units
+    },
+    // Stage 4: Formation (11-20 entries) — terrain feature
+    formation: {
+      scaleMultiplier: 1.8,
+      satelliteCount: [4, 6],
+      contourRings: [3, 5],     // min, max concentric ground rings
+      contourPulseHz: 0.3,      // slow pulse
+      contourMaxRadius: 2.0,    // units from center
+      labelVisible: true,       // keyword name visible from orbit
+      terrainInfluenceRadius: 2.0,
+    },
+    // Stage 5: Landmark (20+ entries) — major geographic feature
+    landmark: {
+      scaleMultiplier: 2.5,
+      particleCount: [50, 100], // orbiting luminous particles
+      particleOrbitRadius: 1.5, // toroidal orbit
+      particleSpeed: 0.3,       // rad/s
+      labelVisible: true,
+      ambientDroneRange: 5.0,   // units — drone fades in on approach
+      terrainInfluenceRadius: 4.0,
+    },
+    // Shape functions — override per lifecycle stage for custom visuals
+    // Default draws white faceted diamond at appropriate scale. Themes can draw trees, runes, sigils, etc.
+    drawSeed: null,       // (ctx, cx, cy, emotionColor) => void
+    drawCrystal: null,    // (ctx, cx, cy, emotionColor, frequency) => void
+    drawCluster: null,    // (ctx, cx, cy, emotionColor, frequency, satellitePositions) => void
+    drawFormation: null,  // (ctx, cx, cy, emotionColor, frequency) => void
+    drawLandmark: null,   // (ctx, cx, cy, emotionColor, frequency) => void
+  },
+
+  // ── Color Evolution ──
+  evolution: {
+    trajectoryWindow: 14,           // days to analyze for frequency trend
+    dormantThreshold: 14,           // days of inactivity → dormant state
+    erosionRate: 0.02,              // terrain displacement decay per dormant day
+    resurfacedBloomDuration: 48,    // hours of gold bloom on reactivation
+    maxTrajectoryShift: 0.6,        // max interpolation toward trajectory target
+    colors: {
+      stress:     "#a04a3a",        // intensifying patterns warm/redden
+      resolving:  "#a0c8a0",        // calming patterns cool/green
+      dormant:    "#6a6a6a",        // inactive patterns fossilize to stone
+      resurfaced: "#f0c896",        // bloom color when dormant pattern wakes
+    },
+    lerpSpeed: 0.01,                // 1% per frame toward target color
   },
 
   // ── Space Environment ──
@@ -166,22 +215,25 @@ const THEME = {
 Copy the default theme and give it a new `id` and `name`. This is your starting canvas.
 
 ### 2. Define Your Visual Language
-Ask yourself: what do thoughts LOOK like in this world? The default uses gemstones (diamonds). But thoughts could be seeds, runes, flames, sigils, constellations, or anything. This decision shapes everything downstream.
+Ask yourself: what do thoughts LOOK like in this world? And more importantly: what does GROWTH look like? The default uses gemstones — seeds are small diamonds, crystals are tall diamonds, clusters are crystal formations, formations create terrain features, landmarks are monumental structures with orbiting particles. But thoughts could be seeds → sprouts → trees → forests → ancient groves. Or runes → sigils → circles → arrays → monoliths. The lifecycle metaphor shapes everything.
 
-### 3. Customize the Marker Draw Functions
-The `drawMini` and `drawBig` functions on the theme object let you completely replace what gets drawn on the canvas textures. If null, the engine uses the default diamond shape (WHITE gem body with emotion-colored outer glow). To make custom shapes, provide a function that takes `(ctx, cx, cy, emotionColor)` and draws on the 2D canvas context. Note: the default engine draws markers as white gems with a subtle emotion hue glow rather than fully emotion-colored, so the diamonds read as clean/sharp from any distance.
+### 3. Customize the Lifecycle Draw Functions
+Five draw functions map to the five lifecycle stages: `drawSeed`, `drawCrystal`, `drawCluster`, `drawFormation`, `drawLandmark`. If null, the engine uses the default white diamond at the appropriate scale multiplier. To make custom shapes, provide a function that takes `(ctx, cx, cy, emotionColor, frequency)` and draws on the 2D canvas context. The default engine draws all markers as WHITE gems with a subtle emotion hue glow, so they read as clean/sharp from any distance.
 
-### 4. Set Your Color Palette
-The emotion colors are the most impactful change. They determine what the terrain looks like from orbit, what the markers glow with, and the overall mood of the world.
+### 4. Set Your Color Palette AND Evolution Colors
+Two layers: the base emotion colors (17 emotions) define the starting identity. The evolution colors define WHERE those colors go over time. A dark world might shift stress patterns to deep crimson and dormant to pitch black. A nature world might shift resolving to bright spring green and dormant to autumn brown. Think about what fossilization looks like in your world.
 
 ### 5. Tune the Terrain
-Adjust fbm scales, octave counts, and color bands to get different planetary geography. Higher continental scale = smoother rolling hills. Lower = more jagged. More octaves = more fine detail. Ridge scale controls the sharpness of tectonic features.
+Adjust fbm scales, octave counts, and color bands to get different planetary geography. Higher continental scale = smoother rolling hills. Lower = more jagged. More octaves = more fine detail. Ridge scale controls the sharpness of tectonic features. Also consider the `terrainInfluenceRadius` for cluster/formation/landmark stages — this controls how much the terrain physically reshapes around major thought patterns.
 
 ### 6. Design Your Soundscape
-Each interaction has a sound. The audio config lets you swap oscillator types, frequency ranges, and envelope shapes. A gentle world might use soft sine waves. An industrial world might use sawtooth with distortion.
+Each interaction AND each lifecycle transition has a sound. The audio config lets you swap oscillator types, frequency ranges, and envelope shapes per stage. A gentle world might use soft sine waves for seeds and wind chimes for crystals. An industrial world might use sawtooth with distortion and metallic impacts for each transformation.
 
 ### 7. Style the Space
 Nebula colors, planet configs, sun positions, asteroid density. These create the skybox personality. A forest world might have green nebulae and a single warm sun. A void world might strip everything to stars only.
+
+### 8. Define the Erosion Aesthetic
+How does forgetting look in your world? The default slowly flattens terrain and shifts to stone gray. A garden world might wilt and brown. An alchemical world might oxidize and tarnish. Set the `erosionRate` and dormant evolution colors to match.
 
 ---
 
@@ -240,55 +292,90 @@ const GHIBLI_GARDEN = {
   },
 
   markers: {
-    // Mini: seed/sprout shape instead of diamond
-    mini: {
-      canvas: [40, 56],
-      elevation: 1.5,
-      surfaceScale: 0.30,
-      aspectRatio: 1.4,
-    },
-    // Big: blooming flower/tree shape instead of diamond
-    big: {
-      canvas: [64, 96],
-      elevation: 2.5,
-      surfaceBaseScale: 0.5,
-      aspectRatio: 1.5,
-    },
-    drawMini: function(ctx, cx, cy, ec) {
-      // Seed shape — small oval with a tiny stem
+    seed: { canvas: [40, 56], elevation: 1.5, surfaceScale: 0.30, aspectRatio: 1.4 },
+    crystal: { canvas: [64, 96], elevation: 2.5, surfaceBaseScale: 0.5, aspectRatio: 1.5 },
+    cluster: { scaleMultiplier: 1.4, satelliteCount: [2, 4], terrainInfluenceRadius: 0.8 },
+    formation: { scaleMultiplier: 2.0, contourRings: [2, 4], labelVisible: true, terrainInfluenceRadius: 2.5 },
+    landmark: { scaleMultiplier: 3.0, particleCount: [30, 60], labelVisible: true, terrainInfluenceRadius: 5.0 },
+
+    // Seed: a small seed pod with a stem
+    drawSeed: function(ctx, cx, cy, ec) {
       ctx.save();
       ctx.shadowColor = ec.hex; ctx.shadowBlur = 8;
       ctx.beginPath();
       ctx.ellipse(cx, cy + 4, 6, 10, 0, 0, Math.PI * 2);
       ctx.fillStyle = ec.hex; ctx.fill();
       ctx.restore();
-      // Stem
       ctx.strokeStyle = "#4a8a6a"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(cx, cy - 6); ctx.lineTo(cx, cy - 16);
-      ctx.stroke();
-      // Tiny leaf
-      ctx.beginPath();
-      ctx.ellipse(cx + 3, cy - 12, 3, 1.5, 0.4, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.moveTo(cx, cy - 6); ctx.lineTo(cx, cy - 16); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx + 3, cy - 12, 3, 1.5, 0.4, 0, Math.PI * 2);
       ctx.fillStyle = "#6ac9a0"; ctx.fill();
     },
-    drawBig: function(ctx, cx, cy, ec, freq) {
-      // Tree/flower — trunk, canopy, and bloom
-      ctx.save();
-      ctx.shadowColor = ec.hex; ctx.shadowBlur = 12;
-      // Trunk
-      ctx.fillStyle = "#5a4030";
-      ctx.fillRect(cx - 3, cy, 6, 30);
-      // Canopy — size scales with frequency
+    // Crystal: a sprout — taller stem with small leaves
+    drawCrystal: function(ctx, cx, cy, ec, freq) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 10;
+      ctx.fillStyle = "#5a4030"; ctx.fillRect(cx - 2, cy, 4, 25);
+      const leafCount = 2 + Math.min(freq, 3);
+      for (let i = 0; i < leafCount; i++) {
+        const ly = cy + 5 + i * 6;
+        const side = i % 2 === 0 ? 1 : -1;
+        ctx.beginPath(); ctx.ellipse(cx + side * 6, ly, 5, 2.5, side * 0.3, 0, Math.PI * 2);
+        ctx.fillStyle = ec.hex + "cc"; ctx.fill();
+      }
+      ctx.restore();
+    },
+    // Cluster: a young tree with canopy
+    drawCluster: function(ctx, cx, cy, ec, freq) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 12;
+      ctx.fillStyle = "#5a4030"; ctx.fillRect(cx - 3, cy, 6, 30);
       const canopyR = 12 + Math.min(freq * 2, 10);
       const cGrad = ctx.createRadialGradient(cx, cy - 2, 2, cx, cy - 2, canopyR);
       cGrad.addColorStop(0, ec.hex + "ff");
       cGrad.addColorStop(0.6, ec.hex + "88");
       cGrad.addColorStop(1, ec.hex + "11");
       ctx.fillStyle = cGrad;
-      ctx.beginPath(); ctx.arc(cx, cy - 2, canopyR, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy - 2, canopyR, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     },
+    // Formation: a mature tree with thick canopy and undergrowth
+    drawFormation: function(ctx, cx, cy, ec, freq) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 16;
+      ctx.fillStyle = "#4a3525"; ctx.fillRect(cx - 5, cy, 10, 35);
+      const canopyR = 18 + Math.min(freq, 12);
+      const cGrad = ctx.createRadialGradient(cx, cy - 6, 3, cx, cy - 6, canopyR);
+      cGrad.addColorStop(0, "#ffffff88"); cGrad.addColorStop(0.2, ec.hex + "ff");
+      cGrad.addColorStop(0.7, ec.hex + "66"); cGrad.addColorStop(1, ec.hex + "11");
+      ctx.fillStyle = cGrad;
+      ctx.beginPath(); ctx.arc(cx, cy - 6, canopyR, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+    // Landmark: ancient tree with massive canopy, fruit/flowers, root system
+    drawLandmark: function(ctx, cx, cy, ec, freq) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 20;
+      // Thick trunk with roots
+      ctx.fillStyle = "#3a2a1a"; ctx.fillRect(cx - 7, cy, 14, 40);
+      ctx.beginPath(); ctx.moveTo(cx - 7, cy + 40); ctx.lineTo(cx - 14, cy + 46);
+      ctx.moveTo(cx + 7, cy + 40); ctx.lineTo(cx + 14, cy + 46);
+      ctx.strokeStyle = "#3a2a1a"; ctx.lineWidth = 3; ctx.stroke();
+      // Massive canopy
+      const canopyR = 24 + Math.min(freq, 8);
+      const cGrad = ctx.createRadialGradient(cx, cy - 10, 4, cx, cy - 10, canopyR);
+      cGrad.addColorStop(0, "#ffffffaa"); cGrad.addColorStop(0.15, ec.hex + "ff");
+      cGrad.addColorStop(0.6, ec.hex + "88"); cGrad.addColorStop(1, ec.hex + "11");
+      ctx.fillStyle = cGrad;
+      ctx.beginPath(); ctx.arc(cx, cy - 10, canopyR, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+  },
+
+  evolution: {
+    colors: {
+      stress:     "#8b5a2a",  // autumn browns
+      resolving:  "#88dd88",  // bright spring green
+      dormant:    "#6b5a4a",  // dried wood brown
+      resurfaced: "#ffe066",  // golden sunlight bloom
+    },
+    erosionRate: 0.015,       // slower erosion — nature persists
   },
 
   space: {
@@ -319,12 +406,15 @@ const GHIBLI_GARDEN = {
 ```
 
 **Key Design Decisions for Ghibli Garden:**
-- Thoughts are seeds that grow into trees (mini-diamond → big diamond = seed → tree)
-- Stress creates withered patches instead of craters (smaller deformation, autumn colors)
+- Full lifecycle: seed pod → sprout with leaves → young tree → mature tree → ancient tree with roots and massive canopy
+- Stress patterns turn autumn brown (withering), resolved patterns bloom spring green
+- Dormant patterns become dried wood — slower erosion rate (nature persists longer)
+- Resurfaced patterns get a golden sunlight bloom — the forest remembers
 - Resolved creates tall blooms (bigger flare displacement)
 - No asteroid belt — the sky is gentle, open, warm
 - Single golden sun instead of three, for that trademark Ghibli sunlight
 - Green/earth UI palette instead of amber
+- Landmarks at 20+ are ancient groves with visible root systems and orbiting pollen particles
 
 ---
 
@@ -392,59 +482,74 @@ const NOIR_GENESIS = {
   },
 
   markers: {
-    // Mini: alchemical sigil/rune instead of diamond
-    mini: {
-      canvas: [48, 48],        // square — sigils are balanced
-      elevation: 2.0,
-      surfaceScale: 0.32,
-      aspectRatio: 1.0,        // square
-    },
-    // Big: transmutation circle with inner element
-    big: {
-      canvas: [80, 80],
-      elevation: 2.5,
-      surfaceBaseScale: 0.5,
-      aspectRatio: 1.0,
-    },
-    drawMini: function(ctx, cx, cy, ec) {
-      // Small alchemical symbol — circle with inner element
-      ctx.save();
-      ctx.shadowColor = ec.hex; ctx.shadowBlur = 10;
+    seed: { canvas: [48, 48], elevation: 2.0, surfaceScale: 0.32, aspectRatio: 1.0 },
+    crystal: { canvas: [80, 80], elevation: 2.5, surfaceBaseScale: 0.5, aspectRatio: 1.0 },
+    cluster: { scaleMultiplier: 1.4, satelliteCount: [3, 5], terrainInfluenceRadius: 1.0 },
+    formation: { scaleMultiplier: 2.0, contourRings: [4, 6], labelVisible: true, terrainInfluenceRadius: 3.0 },
+    landmark: { scaleMultiplier: 3.0, particleCount: [60, 120], labelVisible: true, terrainInfluenceRadius: 5.0 },
+
+    // Seed: alchemical symbol — circle with inner element triangle
+    drawSeed: function(ctx, cx, cy, ec) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 10;
       ctx.strokeStyle = ec.hex; ctx.lineWidth = 1;
-      // Outer circle
       ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.stroke();
-      // Inner triangle (fire/earth/water depending on emotion)
       ctx.beginPath();
       ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 6, cy + 5); ctx.lineTo(cx - 6, cy + 5);
-      ctx.closePath(); ctx.fillStyle = ec.hex + "88"; ctx.fill();
-      ctx.strokeStyle = ec.hex; ctx.stroke();
+      ctx.closePath(); ctx.fillStyle = ec.hex + "88"; ctx.fill(); ctx.stroke();
       ctx.restore();
     },
-    drawBig: function(ctx, cx, cy, ec, freq) {
-      // Transmutation circle — concentric rings with symbols
-      ctx.save();
-      ctx.shadowColor = ec.hex; ctx.shadowBlur = 16;
+    // Crystal: transmutation circle — dual rings with cross lines
+    drawCrystal: function(ctx, cx, cy, ec, freq) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 16;
       const r = 20 + Math.min(freq * 2, 12);
-      // Outer ring
       ctx.strokeStyle = ec.hex; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-      // Inner ring
       ctx.lineWidth = 0.8;
       ctx.beginPath(); ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2); ctx.stroke();
-      // Cross lines
       ctx.beginPath();
       ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
-      ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
-      ctx.stroke();
-      // Central element
+      ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
       const cGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.4);
-      cGrad.addColorStop(0, "#ffffff");
-      cGrad.addColorStop(0.3, ec.hex);
-      cGrad.addColorStop(1, "transparent");
+      cGrad.addColorStop(0, "#ffffff"); cGrad.addColorStop(0.3, ec.hex); cGrad.addColorStop(1, "transparent");
       ctx.fillStyle = cGrad;
       ctx.beginPath(); ctx.arc(cx, cy, r * 0.4, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     },
+    // Cluster: complex transmutation array — nested circles with symbols at cardinal points
+    drawCluster: function(ctx, cx, cy, ec, freq) {
+      ctx.save(); ctx.shadowColor = ec.hex; ctx.shadowBlur = 18;
+      const r = 24 + Math.min(freq * 2, 14);
+      ctx.strokeStyle = ec.hex; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.4, 0, Math.PI * 2); ctx.stroke();
+      // Cardinal symbols
+      const pts = [[0,-1],[1,0],[0,1],[-1,0]];
+      pts.forEach(([dx,dy]) => {
+        const px = cx + dx * r * 0.55, py = cy + dy * r * 0.55;
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fillStyle = ec.hex; ctx.fill();
+      });
+      const cGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.35);
+      cGrad.addColorStop(0, "#ffffff"); cGrad.addColorStop(0.4, ec.hex); cGrad.addColorStop(1, "transparent");
+      ctx.fillStyle = cGrad;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+    // Formation: grand circle with hexagram and rune script around edge
+    drawFormation: null, // uses cluster as base + engine adds contour lines
+    // Landmark: philosophers stone — full mandala with orbiting particles
+    drawLandmark: null,  // uses formation as base + engine adds particle system
+  },
+
+  evolution: {
+    colors: {
+      stress:     "#660022",  // toxic lead/mercury deep red
+      resolving:  "#ffd700",  // transmutation to gold
+      dormant:    "#2a2a3a",  // tarnished, oxidized void
+      resurfaced: "#ff88ff",  // alchemical fire bloom
+    },
+    erosionRate: 0.03,        // faster erosion — alchemy is volatile
   },
 
   space: {
@@ -479,13 +584,15 @@ const NOIR_GENESIS = {
 ```
 
 **Key Design Decisions for Noir Genesis:**
-- Thoughts are alchemical elements — mini-diamonds become sigils, big diamonds become transmutation circles
-- Stress = toxic metals (lead pools, mercury pits) with deeper craters
-- Resolved = precious metals (gold crystallizations, silver veins)
+- Full lifecycle: alchemical symbol → transmutation circle → nested array → grand hexagram → philosophers stone mandala
+- Stress patterns shift to toxic deep red (lead/mercury). Resolved patterns transmute to GOLD. The whole alchemy metaphor plays out in the color evolution
+- Dormant patterns oxidize to near-black (tarnished). Faster erosion rate — alchemy is volatile, forgotten experiments decay quickly
+- Resurfaced patterns get an alchemical fire bloom (bright magenta)
 - Terrain is volcanic obsidian — higher metalness, lower roughness, darker colors
 - The sky is denser with more stars, purple nebulae, and a cold violet sun
 - Sound design is darker — minor keys, lower frequencies, longer decay
-- Square aspect ratio for markers instead of tall diamonds — sigils are balanced
+- Square aspect ratio for markers — sigils are balanced, not tall
+- Landmarks at 20+ are full philosopher's stone mandalas with orbiting dark-matter particles
 
 ---
 
@@ -493,14 +600,15 @@ const NOIR_GENESIS = {
 
 When building a new world, work through these in order:
 
-1. **Define the metaphor**: What are thoughts in this world? (gems, seeds, runes, flames, stars, cells, etc.)
-2. **Set the palette**: 11 UI colors + 17 emotion colors. Test by looking at the planet from orbit — you should be able to read the mood map.
-3. **Draw your markers**: Write `drawMini` and `drawBig` canvas functions. Test at both surface and planet scale.
-4. **Tune the terrain**: Adjust fbm scales and color bands. The planet should look interesting from orbit even with zero thoughts.
-5. **Design the skybox**: Pick nebula colors, sun count/positions, asteroid density. This sets the atmosphere.
-6. **Craft the audio**: Each interaction needs a sound that matches the world's personality. Dark worlds get low frequencies. Light worlds get high ones.
-7. **Typography**: Consider if the default fonts work. A fantasy world might want serif headers. A sci-fi world might want all monospace.
-8. **Test the full loop**: Submit 10+ thoughts, watch them appear, click them, watch aggregation happen, see the transformation animation. The whole experience should feel cohesive.
+1. **Define the growth metaphor**: What are thoughts in this world AND what does growth look like? Map each lifecycle stage (seed → crystal → cluster → formation → landmark) to your metaphor. Gems grow into crystal gardens. Seeds grow into ancient forests. Runes grow into transcription arrays. The lifecycle is the soul of the world.
+2. **Set the palette + evolution colors**: 11 UI colors + 17 emotion colors + 4 evolution target colors (stress, resolving, dormant, resurfaced). Test by looking at the planet from orbit — you should be able to read both the mood map AND the temporal state.
+3. **Draw your lifecycle stages**: Write up to 5 draw functions (`drawSeed`, `drawCrystal`, `drawCluster`, `drawFormation`, `drawLandmark`). Null stages use the default diamond at the stage's scale multiplier. Test each stage at both surface and planet scale.
+4. **Tune the terrain**: Adjust fbm scales, color bands, and `terrainInfluenceRadius` per stage. The planet should look interesting from orbit with zero thoughts, and formations/landmarks should visibly reshape the geography.
+5. **Design the skybox**: Pick nebula colors, sun count/positions, asteroid density. This sets the atmospheric personality.
+6. **Craft the audio per stage**: Each interaction AND each lifecycle transition needs a sound. Seeds might chime softly. Crystal formation might ring like a bell. Landmark creation should feel monumental.
+7. **Define the erosion aesthetic**: Set `erosionRate` and dormant evolution color. How does forgetting look in your world? Test by fast-forwarding dormancy.
+8. **Typography**: Consider if the default fonts work. A fantasy world might want serif headers. A sci-fi world might want all monospace.
+9. **Test the full lifecycle**: Submit 20+ thoughts on the same keyword to walk through all five stages. Watch seeds appear, crystals form, clusters grow, formations claim territory, landmarks become monuments. Then stop submitting and watch the dormancy/erosion over time. The whole arc should feel like a complete story.
 
 ---
 
@@ -512,16 +620,19 @@ These are engine-level features that every world inherits:
 - Keyword hashing to deterministic coordinates (FNV-1a)
 - Keyword normalization (canonical forms)
 - Emotion detection from text
-- Aggregation threshold (freq 3 → mini-diamonds coalesce into big marker)
-- Transformation animation (convergence spiral)
+- Five-stage growth lifecycle (seed → crystal → cluster → formation → landmark) with configurable thresholds
+- Temporal color evolution (stress/resolving/dormant/resurfaced trajectories)
+- Terrain erosion for dormant patterns (displacement decay over time)
+- Transformation animations at each lifecycle threshold
 - Category sidebar with grouped clusters
 - Scene settings panel (layer visibility sliders)
 - Hotkey panel
-- Click interactions (mini-diamond → ThoughtPopup, big marker → ClusterPopup)
+- Click interactions (seed/crystal → popups, formation/landmark → expanded views)
 - Birth animation overlay
 - Camera zoom-to-thought on submit
 - Privacy-first architecture (no raw text storage, keyword-only)
+- White diamond base aesthetic (the gem body is always white, themes control the glow aura and lifecycle shapes)
 
 ---
 
-*COIL World Building Guide v0.3 — Lirio Labs*
+*COIL World Building Guide v0.4 — Lirio Labs*
