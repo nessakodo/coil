@@ -464,7 +464,7 @@ function CinematicIntro({ onEnter }) {
 // Two modes:
 //   SURFACE: Flat terrain (like original COIL) — camera hovers above, WASD walks, drag looks.
 //   PLANET: Sphere in space — orbital camera, full planet view.
-function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode }) {
+function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, sceneSettings }) {
   const mountRef = useRef(null);
   const sceneRef = useRef({});
   const keysRef = useRef({});
@@ -487,8 +487,10 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
   // Track when clusters cross aggregation threshold (freq 3+) for formation animation
   const formingRef = useRef(new Map()); // clusterLabel → timestamp (ms)
   const thoughtStarsRef = useRef([]); // track thought star sprites separately
+  const settingsRef = useRef(sceneSettings || {});
 
   useEffect(() => { modeRef.current = viewMode; }, [viewMode]);
+  useEffect(() => { settingsRef.current = sceneSettings || {}; }, [sceneSettings]);
 
   const TERRAIN_SIZE = 200;
   const TERRAIN_SEG = 160;
@@ -777,7 +779,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     ];
     nebulaConfigs.forEach(cfg => {
       const cx = Math.cos(cfg.angle) * cfg.dist;
-      const cy = Math.sin(cfg.tilt) * cfg.dist * 0.2;
+      const cy = 50 + Math.sin(cfg.tilt) * cfg.dist * 0.3; // elevated well above terrain plane
       const cz = Math.sin(cfg.angle) * cfg.dist;
       // Multiple shells per nebula for volumetric depth
       const shellCount = 5;
@@ -821,18 +823,20 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       nebulaGroup.add(core);
     });
     scene.add(nebulaGroup);
+    // Cache base opacities for scene customization
+    nebulaGroup.children.forEach(c => { if (c.material) c.material._baseOp = c.material.opacity; });
 
     // ── DISTANT PLANETS: Large celestial bodies on the horizon ──
     const distantBodies = new THREE.Group();
     const planetConfigs = [
-      // Gas giant — banded, warm colors, large
-      { dist: 180, angle: 0.8, elev: 25, radius: 12, color: 0x8b6b4a, ring: true, ringColor: 0xa08060, tilt: 0.4 },
-      // Ice planet — blue-white, medium, far
-      { dist: 220, angle: 3.2, elev: -15, radius: 8, color: 0x4a6a8b, ring: false, tilt: 0.15 },
-      // Rocky body — small, reddish, close-ish
-      { dist: 90, angle: 5.0, elev: 35, radius: 3.5, color: 0x8b5a4a, ring: false, tilt: 0.3 },
-      // Distant moon — tiny, pale, very far
-      { dist: 260, angle: 1.9, elev: -30, radius: 4, color: 0x7a7a7a, ring: false, tilt: 0.05 },
+      // Gas giant — banded, warm colors, large, high in the sky
+      { dist: 280, angle: 0.8, elev: 120, radius: 14, color: 0x8b6b4a, ring: true, ringColor: 0xa08060, tilt: 0.4 },
+      // Ice planet — blue-white, medium, far, upper sky
+      { dist: 320, angle: 3.2, elev: 85, radius: 9, color: 0x4a6a8b, ring: false, tilt: 0.15 },
+      // Rocky body — small, reddish, high above horizon
+      { dist: 200, angle: 5.0, elev: 140, radius: 4, color: 0x8b5a4a, ring: false, tilt: 0.3 },
+      // Distant moon — tiny, pale, very far, above
+      { dist: 350, angle: 1.9, elev: 65, radius: 4.5, color: 0x7a7a7a, ring: false, tilt: 0.05 },
     ];
     planetConfigs.forEach(cfg => {
       const px = Math.cos(cfg.angle) * cfg.dist;
@@ -894,9 +898,9 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
 
     // ── DISTANT BRIGHT STARS (suns): Large glowing orbs ──
     const sunConfigs = [
-      { dist: 300, angle: 0.5, elev: 60, radius: 5, color: [1.0, 0.9, 0.7], intensity: 0.04 },  // warm yellow
-      { dist: 350, angle: 2.8, elev: -50, radius: 3.5, color: [0.7, 0.8, 1.0], intensity: 0.03 },  // blue white
-      { dist: 280, angle: 4.2, elev: 40, radius: 2, color: [1.0, 0.6, 0.4], intensity: 0.025 },   // red dwarf
+      { dist: 380, angle: 0.5, elev: 160, radius: 5, color: [1.0, 0.9, 0.7], intensity: 0.04 },  // warm yellow — high up
+      { dist: 400, angle: 2.8, elev: 100, radius: 3.5, color: [0.7, 0.8, 1.0], intensity: 0.03 },  // blue white — upper sky
+      { dist: 340, angle: 4.2, elev: 130, radius: 2, color: [1.0, 0.6, 0.4], intensity: 0.025 },   // red dwarf — above horizon
     ];
     sunConfigs.forEach(cfg => {
       const sx = Math.cos(cfg.angle) * cfg.dist;
@@ -956,12 +960,12 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     for (let i = 0; i < asteroidCount; i++) {
       // Torus-shaped distribution — belt around the mid-plane
       const beltAngle = Math.random() * Math.PI * 2;
-      const beltRadius = 38 + Math.random() * 18; // donut from 38-56 units
-      const beltThickness = (Math.random() - 0.5) * 4; // vertical spread
-      const wobble = (Math.random() - 0.5) * 6; // radial scatter
+      const beltRadius = 80 + Math.random() * 40; // pushed out to 80-120 units
+      const beltThickness = (Math.random() - 0.5) * 4;
+      const wobble = (Math.random() - 0.5) * 6;
 
       beltPos[i*3]     = Math.cos(beltAngle) * (beltRadius + wobble);
-      beltPos[i*3 + 1] = beltThickness + Math.sin(beltAngle * 3 + i) * 0.8;
+      beltPos[i*3 + 1] = 40 + beltThickness + Math.sin(beltAngle * 3 + i) * 0.8; // elevated 40 units above terrain
       beltPos[i*3 + 2] = Math.sin(beltAngle) * (beltRadius + wobble);
 
       beltSizes[i] = 0.06 + Math.random() * 0.18;
@@ -996,10 +1000,10 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     asteroidBelt.add(beltPoints);
 
     // A few larger "hero" asteroids — actual geometry, not points
-    for (let i = 0; i < 8; i++) {
-      const aSize = 0.3 + Math.random() * 0.6;
+    // Pushed far out (120-180 units) so they never intersect the terrain
+    for (let i = 0; i < 6; i++) {
+      const aSize = 0.5 + Math.random() * 0.8;
       const aGeo = new THREE.IcosahedronGeometry(aSize, 0);
-      // Deform for irregular rocky shape
       const aVerts = aGeo.attributes.position;
       for (let v = 0; v < aVerts.count; v++) {
         const scale = 0.7 + Math.random() * 0.6;
@@ -1007,16 +1011,17 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       }
       aVerts.needsUpdate = true;
       aGeo.computeVertexNormals();
-      const aMat = new THREE.MeshStandardMaterial({
-        color: 0x5a5045, roughness: 0.95, metalness: 0.1, flatShading: true,
-        emissive: 0x2a2520, emissiveIntensity: 0.3,
+      const aMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0.35 + Math.random() * 0.15, 0.30 + Math.random() * 0.1, 0.25 + Math.random() * 0.1),
+        transparent: true, opacity: 0.4,
+        blending: THREE.AdditiveBlending, depthWrite: false,
       });
       const aMesh = new THREE.Mesh(aGeo, aMat);
       const angle = Math.random() * Math.PI * 2;
-      const radius = 40 + Math.random() * 14;
+      const radius = 120 + Math.random() * 60;
       aMesh.position.set(
         Math.cos(angle) * radius,
-        (Math.random() - 0.5) * 3,
+        40 + Math.random() * 30,
         Math.sin(angle) * radius
       );
       aMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
@@ -1024,6 +1029,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       asteroidBelt.add(aMesh);
     }
     scene.add(asteroidBelt);
+    asteroidBelt.children.forEach(c => { if (c.material && !c.material.isShaderMaterial) c.material._baseOp = c.material.opacity; });
 
     // ── COSMIC DUST: Ultra-fine ambient particles layered at multiple depths ──
     // These are NOT thought stars — they're atmospheric, like looking through
@@ -1530,16 +1536,14 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
           const age = nowMs - (m.userData.birthTime || 0);
           const formationDuration = 2000; // 2 seconds
           if (age < formationDuration) {
-            // Scale up from 0 during formation
             const progress = age / formationDuration;
             const eased = progress < 0.5
               ? 4 * progress * progress * progress
-              : 1 - Math.pow(-2 * progress + 2, 3) / 2; // easeInOutCubic
-            m.scale.setScalar(baseScale * eased);
+              : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            m.scale.set(baseScale * eased, baseScale * 1.4 * eased, 1);
           } else {
-            // Normal diamond pulse
             const pulse = baseScale * (1 + Math.sin(t * 2.5 + m.userData.seed) * 0.15);
-            m.scale.setScalar(pulse);
+            m.scale.set(pulse, pulse * 1.4, 1);
           }
         } else {
           // Regular marker pulse
@@ -1629,6 +1633,22 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         }
       });
 
+      // ── Apply scene customization settings ──
+      const ss = settingsRef.current;
+      if (ss) {
+        starField.material.opacity = (ss.starFieldOpacity ?? 1) * 0.85;
+        nebulaGroup.visible = (ss.nebulaOpacity ?? 1) > 0.01;
+        nebulaGroup.children.forEach(c => { if (c.material) c.material.opacity = c.material._baseOp !== undefined ? c.material._baseOp * (ss.nebulaOpacity ?? 1) : c.material.opacity; });
+        asteroidBelt.visible = (ss.asteroidBeltOpacity ?? 1) > 0.01;
+        asteroidBelt.children.forEach(c => { if (c.material && !c.material.isShaderMaterial) c.material.opacity = (c.material._baseOp ?? c.material.opacity) * (ss.asteroidBeltOpacity ?? 1); });
+        cosmicDustGroup.visible = (ss.cosmicDustOpacity ?? 1) > 0.01;
+        distantBodies.visible = (ss.distantBodiesOpacity ?? 1) > 0.01;
+        cometGroup.visible = (ss.cometOpacity ?? 1) > 0.01;
+        particles.material.opacity = 0.5 * (ss.ambientParticles ?? 1);
+        terrainWireMesh.material.opacity = 0.025 * (ss.terrainWireframe ?? 1);
+        atmosMesh.visible = (ss.atmosphereGlow ?? 1) > 0.01;
+      }
+
       ren.render(scene, cam);
       animRef.current = requestAnimationFrame(animate);
     };
@@ -1675,53 +1695,97 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         formingRef.current.set(c.label, Date.now());
       }
 
+      // ── Diamond texture: tall faceted gem shape, emotion-colored ──
       const canvas = document.createElement("canvas");
-      canvas.width = 48; canvas.height = 48;
+      canvas.width = 64; canvas.height = 96; // taller canvas for elongated diamond
       const ctx = canvas.getContext("2d");
       const hex = c.colorData.hex;
+      const cx = 32, cy = 48; // center of diamond
 
-      // Outer glow halo
-      const grad = ctx.createRadialGradient(24, 24, 4, 24, 24, 22);
-      grad.addColorStop(0, hex + "aa");
+      // Outer glow bloom — large soft halo
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 40);
+      grad.addColorStop(0, hex + "ff");
+      grad.addColorStop(0.15, hex + "aa");
       grad.addColorStop(0.4, hex + "44");
-      grad.addColorStop(1, hex + "00");
+      grad.addColorStop(0.7, hex + "11");
+      grad.addColorStop(1, "transparent");
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, 48, 48);
+      ctx.fillRect(0, 0, 64, 96);
 
-      // Diamond shape
-      ctx.shadowColor = hex; ctx.shadowBlur = 10;
+      // Diamond shape — tall, narrow, gem-like (top point taller than bottom)
+      const topY = 10, midY = cy, botY = 82;
+      const halfW = 16; // half-width at widest point
+      ctx.save();
+      ctx.shadowColor = hex; ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.moveTo(24, 6); ctx.lineTo(38, 24); ctx.lineTo(24, 42); ctx.lineTo(10, 24);
+      ctx.moveTo(cx, topY);       // top point
+      ctx.lineTo(cx + halfW, midY); // right
+      ctx.lineTo(cx, botY);       // bottom point
+      ctx.lineTo(cx - halfW, midY); // left
       ctx.closePath();
-      ctx.fillStyle = hex; ctx.globalAlpha = 0.95; ctx.fill();
-      ctx.globalAlpha = 1; ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1; ctx.stroke();
-      // Inner bright core
-      ctx.beginPath(); ctx.arc(24, 24, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff"; ctx.globalAlpha = 0.9; ctx.fill();
+      ctx.fillStyle = hex; ctx.fill();
+      // Second pass brighter
+      ctx.shadowBlur = 8;
+      ctx.globalAlpha = 0.6; ctx.fill();
+      ctx.restore();
+
+      // Facet lines — gives the gem its cut appearance
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 0.8;
+      // Top facet
+      ctx.beginPath(); ctx.moveTo(cx - halfW, midY); ctx.lineTo(cx, topY + 18); ctx.lineTo(cx + halfW, midY); ctx.stroke();
+      // Center horizontal
+      ctx.beginPath(); ctx.moveTo(cx - halfW + 2, midY); ctx.lineTo(cx + halfW - 2, midY); ctx.stroke();
+      ctx.restore();
+
+      // White edge highlight
+      ctx.beginPath();
+      ctx.moveTo(cx, topY); ctx.lineTo(cx + halfW, midY); ctx.lineTo(cx, botY); ctx.lineTo(cx - halfW, midY);
+      ctx.closePath();
+      ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1; ctx.stroke();
+
+      // Bright white inner core
+      ctx.beginPath(); ctx.arc(cx, midY - 4, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.globalAlpha = 0.95; ctx.fill();
+
+      // Extra glow ring for big clusters
       if (c.frequency >= 6) {
-        ctx.beginPath(); ctx.arc(24, 24, 8, 0, Math.PI * 2);
-        ctx.strokeStyle = hex; ctx.globalAlpha = 0.4; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+        ctx.strokeStyle = hex; ctx.lineWidth = 1.5; ctx.stroke();
       }
+      ctx.globalAlpha = 1;
       const texture = new THREE.CanvasTexture(canvas);
+      texture.premultiplyAlpha = true;
       const birthTime = formingRef.current.get(c.label);
 
-      // Surface diamond
-      const surfMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, sizeAttenuation: true });
+      // Surface diamond — always floats well above terrain
+      const surfMat = new THREE.SpriteMaterial({
+        map: texture, transparent: true, depthWrite: false, sizeAttenuation: true,
+        blending: THREE.AdditiveBlending,
+      });
       const surfSprite = new THREE.Sprite(surfMat);
-      surfSprite.position.set(c.planeX, 0.8 + (c.flareScale || 0) * 2, c.planeZ);
-      const surfBase = 0.35 + Math.min(c.frequency * 0.04, 0.3);
-      surfSprite.scale.setScalar(surfBase);
+      const surfElevation = 2.0 + (c.flareScale || 0) * 3 + Math.min(c.frequency * 0.15, 0.8);
+      surfSprite.position.set(c.planeX, surfElevation, c.planeZ);
+      const surfBase = 0.55 + Math.min(c.frequency * 0.06, 0.4);
+      surfSprite.scale.set(surfBase, surfBase * 1.4, 1); // taller than wide
       surfSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: surfBase, worldX: c.planeX, worldZ: c.planeZ, isDiamond: true, birthTime };
       surfaceMarkerGroup.add(surfSprite);
       markersRef.current.push(surfSprite);
 
       // Planet diamond
-      const planetMat = new THREE.SpriteMaterial({ map: texture.clone(), transparent: true, depthWrite: false, sizeAttenuation: true });
+      const planetMat = new THREE.SpriteMaterial({
+        map: texture.clone(), transparent: true, depthWrite: false, sizeAttenuation: true,
+        blending: THREE.AdditiveBlending,
+      });
       const planetSprite = new THREE.Sprite(planetMat);
-      const planetPos = c.direction.clone().multiplyScalar(2.8 + 0.06 + (c.flareScale || 0));
+      const planetGap = 0.12 + (c.flareScale || 0) + Math.min(c.frequency * 0.01, 0.06);
+      const planetPos = c.direction.clone().multiplyScalar(2.8 + planetGap);
       planetSprite.position.copy(planetPos);
-      const planetBase = 0.04 + Math.min(c.frequency * 0.005, 0.04);
-      planetSprite.scale.setScalar(planetBase);
+      const planetBase = 0.06 + Math.min(c.frequency * 0.007, 0.05);
+      planetSprite.scale.set(planetBase, planetBase * 1.4, 1);
       planetSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: planetBase, isDiamond: true, birthTime };
       planetMarkerGroup.add(planetSprite);
       markersRef.current.push(planetSprite);
@@ -1787,9 +1851,9 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       const starTex = new THREE.CanvasTexture(starCanvas);
 
       // ── Surface thought star ──
-      const sMat = new THREE.SpriteMaterial({ map: starTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.75 : 0.9 });
+      const sMat = new THREE.SpriteMaterial({ map: starTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.75 : 0.9, blending: THREE.AdditiveBlending });
       const sStar = new THREE.Sprite(sMat);
-      sStar.position.set(starX, 0.3 + Math.random() * 0.3, starZ);
+      sStar.position.set(starX, 0.6 + Math.random() * 0.5, starZ);
       const sBase = isAggregated ? 0.12 : 0.18;
       sStar.scale.setScalar(sBase);
       sStar.userData = {
@@ -1813,7 +1877,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         .addScaledVector(bitangent, Math.sin(offsetAngle) * pSpreadDist)
         .normalize();
 
-      const pMat = new THREE.SpriteMaterial({ map: starTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.7 : 0.85 });
+      const pMat = new THREE.SpriteMaterial({ map: starTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.7 : 0.85, blending: THREE.AdditiveBlending });
       const pStar = new THREE.Sprite(pMat);
       pStar.position.copy(pDir.clone().multiplyScalar(2.82));
       const pBase = isAggregated ? 0.012 : 0.018;
@@ -2079,6 +2143,98 @@ function HotkeyPanel({ isOpen, onToggle, viewMode }) {
 }
 
 
+// ─── Scene Settings Panel ───
+function SceneSettingsPanel({ isOpen, onToggle, settings, onChange }) {
+  const sliders = [
+    { key: "starFieldOpacity", label: "Galaxy Stars" },
+    { key: "nebulaOpacity", label: "Nebulae" },
+    { key: "distantBodiesOpacity", label: "Planets & Suns" },
+    { key: "asteroidBeltOpacity", label: "Asteroid Belt" },
+    { key: "cosmicDustOpacity", label: "Cosmic Dust" },
+    { key: "cometOpacity", label: "Comets" },
+    { key: "ambientParticles", label: "Ambient Particles" },
+    { key: "terrainWireframe", label: "Wireframe Grid" },
+    { key: "atmosphereGlow", label: "Atmosphere Glow" },
+  ];
+  const handleSlider = (key, val) => {
+    onChange({ ...settings, [key]: val });
+  };
+  const handlePreset = (preset) => {
+    const presets = {
+      full: Object.fromEntries(sliders.map(s => [s.key, 1.0])),
+      minimal: Object.fromEntries(sliders.map(s => [s.key, s.key === "starFieldOpacity" ? 0.3 : s.key === "atmosphereGlow" ? 0.5 : 0])),
+      focused: { starFieldOpacity: 0.5, nebulaOpacity: 0.2, distantBodiesOpacity: 0.3, asteroidBeltOpacity: 0, cosmicDustOpacity: 0.1, cometOpacity: 0, ambientParticles: 0.6, terrainWireframe: 1, atmosphereGlow: 1 },
+    };
+    onChange(presets[preset] || presets.full);
+  };
+  return (
+    <>
+      <button onClick={() => { onToggle(); sound.play("hover"); }}
+        onMouseEnter={() => sound.play("hover")}
+        style={{
+          position: "absolute", bottom: 18, left: 18, zIndex: 30, width: 36, height: 36,
+          borderRadius: 10, border: `1px solid ${isOpen ? COLORS.amber + "44" : COLORS.surfaceLight}`,
+          background: isOpen ? `${COLORS.surface}ee` : `${COLORS.surface}99`,
+          backdropFilter: "blur(8px)", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 14,
+          color: isOpen ? COLORS.amber : COLORS.textMuted,
+          transition: "all 0.3s ease",
+        }}>
+        {"\u2699"}
+      </button>
+      <div data-panel="true" style={{
+        position: "absolute", bottom: 62, left: 18, width: 240,
+        background: `${COLORS.bg}f5`, backdropFilter: "blur(20px)",
+        border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 12,
+        padding: "16px 18px", zIndex: 30,
+        opacity: isOpen ? 1 : 0,
+        transform: isOpen ? "translateY(0)" : "translateY(10px)",
+        pointerEvents: isOpen ? "all" : "none",
+        transition: "all 0.3s cubic-bezier(0.22, 1, 0.36, 1)",
+        maxHeight: "60vh", overflowY: "auto",
+      }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.textMuted, letterSpacing: "0.2em", marginBottom: 14 }}>
+          SCENE SETTINGS
+        </div>
+        {/* Presets */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {[["full", "Full"], ["focused", "Focus"], ["minimal", "Minimal"]].map(([k, label]) => (
+            <button key={k} onClick={() => handlePreset(k)}
+              style={{
+                flex: 1, padding: "5px 0", borderRadius: 6,
+                border: `1px solid ${COLORS.surfaceLight}`, background: `${COLORS.surface}cc`,
+                color: COLORS.textSecondary, fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 8, letterSpacing: "0.1em", cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => { e.target.style.borderColor = COLORS.amber + "44"; e.target.style.color = COLORS.amber; }}
+              onMouseLeave={(e) => { e.target.style.borderColor = COLORS.surfaceLight; e.target.style.color = COLORS.textSecondary; }}
+            >{label}</button>
+          ))}
+        </div>
+        {sliders.map(({ key, label }) => (
+          <div key={key} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+              <span style={{ fontFamily: "'DM Sans'", fontSize: 11, color: COLORS.textSecondary }}>{label}</span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.textMuted }}>
+                {Math.round((settings[key] ?? 1) * 100)}%
+              </span>
+            </div>
+            <input type="range" min="0" max="100" value={Math.round((settings[key] ?? 1) * 100)}
+              onChange={(e) => handleSlider(key, parseInt(e.target.value) / 100)}
+              style={{
+                width: "100%", height: 3, appearance: "none", background: `linear-gradient(to right, ${COLORS.amber}88 ${(settings[key] ?? 1) * 100}%, ${COLORS.surfaceLight} ${(settings[key] ?? 1) * 100}%)`,
+                borderRadius: 2, outline: "none", cursor: "pointer",
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 // ─── Main ───
 export default function Coil() {
   const [phase, setPhase] = useState("intro");
@@ -2093,6 +2249,18 @@ export default function Coil() {
   const [zoomTarget, setZoomTarget] = useState(null);
   const [viewMode, setViewMode] = useState("surface"); // "surface" or "planet"
   const [birthLabel, setBirthLabel] = useState(null); // { text, emotion, id } — fading label for new thought
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sceneSettings, setSceneSettings] = useState({
+    starFieldOpacity: 1.0,    // background galaxy stars
+    nebulaOpacity: 1.0,       // volumetric nebulae
+    asteroidBeltOpacity: 1.0, // asteroid belt visibility
+    cosmicDustOpacity: 1.0,   // ambient cosmic dust particles
+    distantBodiesOpacity: 1.0,// planets, suns, lens flares
+    cometOpacity: 1.0,        // comets
+    ambientParticles: 1.0,    // surface floating particles
+    terrainWireframe: 1.0,    // wireframe overlay
+    atmosphereGlow: 1.0,      // planet atmosphere rim
+  });
 
   const DEMO = [
     // ─── Career anxiety cluster (8 entries → deep crater) ───
@@ -2259,12 +2427,13 @@ export default function Coil() {
     const onEsc = (e) => {
       if (e.key === "Escape") {
         if (selectedCluster) setSelectedCluster(null);
+        else if (settingsOpen) setSettingsOpen(false);
         else if (sidebarOpen) setSidebarOpen(false);
       }
     };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
-  }, [selectedCluster, sidebarOpen]);
+  }, [selectedCluster, sidebarOpen, settingsOpen]);
 
   if (phase === "intro") return <CinematicIntro onEnter={handleEnter} />;
 
@@ -2281,29 +2450,54 @@ export default function Coil() {
       {birthLabel && (() => {
         const ec = getEmotionColor(birthLabel.emotion);
         return (
-          <div key={birthLabel.id} style={{ position: "absolute", top: "42%", left: "50%", zIndex: 45, pointerEvents: "none", textAlign: "center" }}>
-            {/* Star burst behind text */}
+          <div key={birthLabel.id} style={{ position: "absolute", top: "38%", left: "50%", zIndex: 45, pointerEvents: "none", textAlign: "center" }}>
+            {/* Outer pulse ring */}
             <div style={{
-              position: "absolute", top: "50%", left: "50%", width: 80, height: 80,
+              position: "absolute", top: "50%", left: "50%", width: 220, height: 220,
               borderRadius: "50%",
-              background: `radial-gradient(circle, ${ec.hex}44 0%, ${ec.hex}11 40%, transparent 70%)`,
+              border: `1px solid ${ec.hex}55`,
+              animation: "birthRing 2.4s ease-out forwards",
+            }} />
+            {/* Star burst — large, bright radial explosion */}
+            <div style={{
+              position: "absolute", top: "50%", left: "50%", width: 180, height: 180,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${ec.hex}cc 0%, ${ec.hex}88 15%, ${ec.hex}44 35%, ${ec.hex}11 60%, transparent 80%)`,
               animation: "starBurst 2.8s ease-out forwards",
+            }} />
+            {/* Inner bright core flash */}
+            <div style={{
+              position: "absolute", top: "50%", left: "50%", width: 24, height: 24,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, #ffffff 0%, ${ec.hex} 50%, transparent 100%)`,
+              animation: "birthCore 1.2s ease-out forwards",
+            }} />
+            {/* Cross flare rays */}
+            <div style={{
+              position: "absolute", top: "50%", left: "50%", width: 2, height: 120,
+              background: `linear-gradient(to bottom, transparent, ${ec.hex}88, transparent)`,
+              animation: "birthRay 2s ease-out forwards",
+            }} />
+            <div style={{
+              position: "absolute", top: "50%", left: "50%", width: 120, height: 2,
+              background: `linear-gradient(to right, transparent, ${ec.hex}88, transparent)`,
+              animation: "birthRay 2s ease-out forwards",
             }} />
             {/* Thought label */}
             <div style={{
               position: "absolute", top: "50%", left: "50%", whiteSpace: "nowrap",
-              fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 300,
-              color: ec.hex, letterSpacing: "0.06em",
-              textShadow: `0 0 20px ${ec.hex}88, 0 0 40px ${ec.hex}44`,
+              fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 300,
+              color: ec.hex, letterSpacing: "0.08em",
+              textShadow: `0 0 24px ${ec.hex}cc, 0 0 48px ${ec.hex}66, 0 0 80px ${ec.hex}33`,
               animation: "birthFade 2.8s cubic-bezier(0.22, 1, 0.36, 1) forwards",
             }}>
               {birthLabel.text}
             </div>
             {/* Emotion subtag */}
             <div style={{
-              position: "absolute", top: "calc(50% + 28px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
+              position: "absolute", top: "calc(50% + 32px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
               fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: "0.2em",
-              color: COLORS.textMuted,
+              color: COLORS.textSecondary,
               animation: "birthFade 2.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards",
               opacity: 0,
             }}>
@@ -2313,7 +2507,7 @@ export default function Coil() {
         );
       })()}
 
-      <PlanetScene clusters={clusters} entries={entries} onMarkerClick={handleMarkerClick} zoomTarget={zoomTarget} viewMode={viewMode} />
+      <PlanetScene clusters={clusters} entries={entries} onMarkerClick={handleMarkerClick} zoomTarget={zoomTarget} viewMode={viewMode} sceneSettings={sceneSettings} />
 
       {/* Header — top center so it doesn't overlap the toggle button */}
       <div style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 20, display: "flex", alignItems: "center", gap: 10, animation: "fadeDown 1s ease 0.4s both", pointerEvents: "none" }}>
@@ -2332,6 +2526,7 @@ export default function Coil() {
           if (cluster) setTimeout(() => setSelectedCluster(cluster), 400);
         }} />
       <HotkeyPanel isOpen={hotkeyOpen} onToggle={() => setHotkeyOpen(!hotkeyOpen)} viewMode={viewMode} />
+      <SceneSettingsPanel isOpen={settingsOpen} onToggle={() => setSettingsOpen(!settingsOpen)} settings={sceneSettings} onChange={setSceneSettings} />
 
       {/* View Mode Toggle */}
       <button onClick={() => { setViewMode(v => v === "surface" ? "planet" : "surface"); sound.play("reveal"); }}
@@ -2397,10 +2592,15 @@ export default function Coil() {
         @keyframes fadeDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes flashOut { 0%{opacity:0.5} 100%{opacity:0} }
         @keyframes birthFade { 0%{opacity:0;transform:translate(-50%,-50%) scale(0.6)} 12%{opacity:1;transform:translate(-50%,-50%) scale(1.05)} 20%{transform:translate(-50%,-50%) scale(1)} 75%{opacity:0.9} 100%{opacity:0;transform:translate(-50%,-50%) scale(1) translateY(-18px)} }
-        @keyframes starBurst { 0%{opacity:0;transform:translate(-50%,-50%) scale(0)} 25%{opacity:1;transform:translate(-50%,-50%) scale(1.4)} 50%{transform:translate(-50%,-50%) scale(0.9)} 70%{opacity:0.7} 100%{opacity:0;transform:translate(-50%,-50%) scale(2)} }
+        @keyframes starBurst { 0%{opacity:0;transform:translate(-50%,-50%) scale(0)} 15%{opacity:1;transform:translate(-50%,-50%) scale(1.2)} 30%{opacity:0.9;transform:translate(-50%,-50%) scale(0.85)} 50%{opacity:0.6;transform:translate(-50%,-50%) scale(1.6)} 100%{opacity:0;transform:translate(-50%,-50%) scale(2.5)} }
+        @keyframes birthRing { 0%{opacity:0;transform:translate(-50%,-50%) scale(0)} 20%{opacity:0.8;transform:translate(-50%,-50%) scale(0.8)} 60%{opacity:0.3;transform:translate(-50%,-50%) scale(1.5)} 100%{opacity:0;transform:translate(-50%,-50%) scale(2.2)} }
+        @keyframes birthCore { 0%{opacity:0;transform:translate(-50%,-50%) scale(0)} 10%{opacity:1;transform:translate(-50%,-50%) scale(2)} 40%{opacity:0.8;transform:translate(-50%,-50%) scale(1)} 100%{opacity:0;transform:translate(-50%,-50%) scale(0)} }
+        @keyframes birthRay { 0%{opacity:0;transform:translate(-50%,-50%) scaleY(0)} 15%{opacity:0.8;transform:translate(-50%,-50%) scaleY(1.2)} 50%{opacity:0.4;transform:translate(-50%,-50%) scaleY(1)} 100%{opacity:0;transform:translate(-50%,-50%) scaleY(0.3)} }
         @keyframes popupIn { 0%{opacity:0;transform:translate(-50%,-50%) scale(0.92)} 100%{opacity:1;transform:translate(-50%,-50%) scale(1)} }
         textarea::placeholder{color:${COLORS.textMuted};font-style:italic}
         ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:${COLORS.surfaceLight};border-radius:3px}
+        input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:${COLORS.amber};cursor:pointer;border:none;box-shadow:0 0 6px ${COLORS.amber}44}
+        input[type="range"]::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:${COLORS.amber};cursor:pointer;border:none}
         *{box-sizing:border-box}
       `}</style>
     </div>
