@@ -451,16 +451,19 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     });
   }, [clusters]);
 
-  // Zoom to target
+  // Zoom to target — snap camera directly to the cluster location
   useEffect(() => {
     if (!zoomTarget) return;
     const { phi, theta } = hashToAngle(zoomTarget);
-    // Surface: walk near that spot
     const px = ((theta / (Math.PI * 2)) - 0.5) * TERRAIN_SIZE;
     const pz = ((phi / Math.PI) - 0.5) * TERRAIN_SIZE;
+    // Snap immediately so user sees the thought location right away
+    surfRef.current.x = px;
+    surfRef.current.z = pz + 5;
     surfRef.current.targetX = px;
     surfRef.current.targetZ = pz + 5;
-    surfRef.current.targetYaw = Math.atan2(px - surfRef.current.x, pz - surfRef.current.z);
+    surfRef.current.targetYaw = Math.atan2(0, -1); // face toward the cluster
+    surfRef.current.yaw = surfRef.current.targetYaw;
     // Planet: orbit to face that spot
     orbitRef.current.targetPhi = phi;
     orbitRef.current.targetTheta = theta + Math.PI;
@@ -933,6 +936,12 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         // Camera: hover above terrain, looking forward — clean FPV, more terrain visible
         const camHeight = 4.0 + Math.sin(t * 0.25) * 0.15;
 
+        // Terrain mesh follows the player — always centered, never see edges
+        terrainMesh.position.x = surf.x;
+        terrainMesh.position.z = surf.z;
+        terrainWireMesh.position.x = surf.x;
+        terrainWireMesh.position.z = surf.z;
+
         cam.position.set(surf.x, camHeight, surf.z);
 
         // Look ahead + slightly down so most of the view is terrain, not sky
@@ -947,30 +956,42 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         pl.position.set(surf.x, 4, surf.z);
 
         // ─── Deform flat terrain ───
+        // Vertices are in LOCAL space (centered on player). Convert to WORLD for noise/clusters.
         const tPos = terrainGeo.attributes.position;
         const tCols = new Float32Array(tPos.count * 3);
 
         for (let i = 0; i < tPos.count; i++) {
-          const vx = tPos.getX(i), vz = tPos.getZ(i);
+          const lx = tPos.getX(i), lz = tPos.getZ(i); // local coords
+          // World position = local + mesh offset (which is surf.x/z)
+          const wx = lx + surf.x;
+          const wz = lz + surf.z;
 
-          // Base terrain from fbm — scaled for larger terrain
-          let elev = fbm3D(vx * 0.08 + t * 0.04, 0, vz * 0.08 + t * 0.03, 5) * 1.2;
-          elev += Math.sin(vx * 0.06 + t * 0.1) * Math.cos(vz * 0.06 + t * 0.08) * 0.4;
+          // Base terrain from fbm using world coords (consistent no matter where you walk)
+          let elev = fbm3D(wx * 0.08 + t * 0.04, 0, wz * 0.08 + t * 0.03, 5) * 1.2;
+          elev += Math.sin(wx * 0.06 + t * 0.1) * Math.cos(wz * 0.06 + t * 0.08) * 0.4;
 
-          // Base color: warm earth tones (original palette)
+          // Base color: warm earth tones
           const nh = (elev + 1) / 2.2;
           let cr, cg, cb;
           if (nh > 0.6) { cr = 0.78; cg = 0.42; cb = 0.32; }
           else if (nh < 0.3) { cr = 0.38; cg = 0.52; cb = 0.4; }
           else { cr = 0.58 + nh * 0.12; cg = 0.44 + nh * 0.08; cb = 0.32; }
 
-          // Subtle terrain ripple near player position
-          const md = Math.hypot(vx - surf.x, vz - surf.z);
-          if (md < 3) elev += Math.sin(md * 3 - t * 4) * 0.05 * Math.max(0, 1 - md / 3);
+          // Subtle terrain ripple near player (lx,lz ~ 0 since centered on player)
+          const md = Math.hypot(lx, lz);
+          if (md < 4) elev += Math.sin(md * 2.5 - t * 4) * 0.05 * Math.max(0, 1 - md / 4);
 
-          // Cluster deformations on flat terrain
+          // Cluster deformations — use wrapped distance so clusters tile with terrain
           for (const cluster of clusterData) {
-            const d = Math.hypot(vx - cluster.planeX, vz - cluster.planeZ);
+            // Wrapped distance: shortest path on toroidal surface
+            let dx = wx - cluster.planeX;
+            let dz = wz - cluster.planeZ;
+            // Wrap to nearest instance
+            if (dx > halfT) dx -= TERRAIN_SIZE;
+            if (dx < -halfT) dx += TERRAIN_SIZE;
+            if (dz > halfT) dz -= TERRAIN_SIZE;
+            if (dz < -halfT) dz += TERRAIN_SIZE;
+            const d = Math.sqrt(dx * dx + dz * dz);
             const radius = 8 + Math.min(cluster.frequency * 1.5, 10);
             const influence = Math.max(0, 1 - d / radius);
             if (influence > 0) {
@@ -996,14 +1017,10 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
             }
           }
 
-          // Gentle edge softening — terrain stays bright, just fades slightly at far boundaries
-          const edgeDist = Math.max(Math.abs(vx), Math.abs(vz)) / (TERRAIN_SIZE * 0.5);
-          const edge = edgeDist > 0.85 ? 1.0 - (edgeDist - 0.85) / 0.15 : 1.0;
-
           tPos.setY(i, elev);
-          tCols[i*3] = Math.max(0, Math.min(1, cr * Math.max(0.15, edge)));
-          tCols[i*3+1] = Math.max(0, Math.min(1, cg * Math.max(0.15, edge)));
-          tCols[i*3+2] = Math.max(0, Math.min(1, cb * Math.max(0.15, edge)));
+          tCols[i*3] = Math.max(0, Math.min(1, cr));
+          tCols[i*3+1] = Math.max(0, Math.min(1, cg));
+          tCols[i*3+2] = Math.max(0, Math.min(1, cb));
         }
 
         terrainGeo.setAttribute("color", new THREE.BufferAttribute(tCols, 3));
@@ -1122,12 +1139,40 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       }
 
       // ─── Shared: billboard markers toward camera ───
+      const halfTerrain = TERRAIN_SIZE * 0.5;
       markersRef.current.forEach(m => {
         m.quaternion.copy(cam.quaternion);
         const baseScale = m.userData.baseScale || 0.05;
         const pulse = baseScale * (1 + Math.sin(t * 2.5 + m.userData.seed) * 0.15);
         m.scale.setScalar(pulse);
+
+        // In surface mode, wrap marker positions relative to player for seamless planet
+        if (mode === "surface" && m.userData.worldX !== undefined) {
+          let dx = m.userData.worldX - surf.x;
+          let dz = m.userData.worldZ - surf.z;
+          if (dx > halfTerrain) dx -= TERRAIN_SIZE;
+          if (dx < -halfTerrain) dx += TERRAIN_SIZE;
+          if (dz > halfTerrain) dz -= TERRAIN_SIZE;
+          if (dz < -halfTerrain) dz += TERRAIN_SIZE;
+          m.position.x = surf.x + dx;
+          m.position.z = surf.z + dz;
+        }
       });
+      // Also wrap surface light positions
+      if (mode === "surface") {
+        surfaceMarkerGroup.children.forEach(child => {
+          if (child.isPointLight && child.userData.worldX !== undefined) {
+            let dx = child.userData.worldX - surf.x;
+            let dz = child.userData.worldZ - surf.z;
+            if (dx > halfTerrain) dx -= TERRAIN_SIZE;
+            if (dx < -halfTerrain) dx += TERRAIN_SIZE;
+            if (dz > halfTerrain) dz -= TERRAIN_SIZE;
+            if (dz < -halfTerrain) dz += TERRAIN_SIZE;
+            child.position.x = surf.x + dx;
+            child.position.z = surf.z + dz;
+          }
+        });
+      }
 
       // Galaxy spin
       starField.rotation.y += 0.00008;
@@ -1227,7 +1272,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       surfSprite.position.set(c.planeX, 0.8 + (c.flareScale || 0) * 2, c.planeZ);
       const surfBase = 0.35 + Math.min(c.frequency * 0.04, 0.3);
       surfSprite.scale.setScalar(surfBase);
-      surfSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: surfBase };
+      surfSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: surfBase, worldX: c.planeX, worldZ: c.planeZ };
       surfaceMarkerGroup.add(surfSprite);
       markersRef.current.push(surfSprite);
 
@@ -1256,8 +1301,9 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       if (c.frequency >= 2) {
         const lightColor = new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
         const intensity = Math.min(c.frequency * 0.1, 0.8);
-        const surfLight = new THREE.PointLight(lightColor, intensity, 6);
+        const surfLight = new THREE.PointLight(lightColor, intensity, 12);
         surfLight.position.set(c.planeX, 1.5 + (c.flareScale || 0) * 2, c.planeZ);
+        surfLight.userData = { worldX: c.planeX, worldZ: c.planeZ };
         surfaceMarkerGroup.add(surfLight);
       }
     });
@@ -1650,7 +1696,14 @@ export default function Coil() {
       </div>
 
       <CategorySidebar clusters={clusters} entries={entries} isOpen={sidebarOpen} onToggle={() => { setSidebarOpen(!sidebarOpen); sound.play("hover"); }}
-        onClusterClick={(label) => { setZoomTarget(null); setTimeout(() => setZoomTarget(label), 50); }} />
+        onClusterClick={(label) => {
+          // Center the camera on this cluster
+          setZoomTarget(null);
+          setTimeout(() => setZoomTarget(label), 50);
+          // Show the cluster popup with all thoughts for this pattern
+          const cluster = clusters.find(c => c.label === label);
+          if (cluster) setTimeout(() => setSelectedCluster(cluster), 400);
+        }} />
       <HotkeyPanel isOpen={hotkeyOpen} onToggle={() => setHotkeyOpen(!hotkeyOpen)} viewMode={viewMode} />
 
       {/* View Mode Toggle */}
