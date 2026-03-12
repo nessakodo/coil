@@ -145,6 +145,19 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
       osc.connect(gain).connect(this.ctx.destination); osc.start(now); osc.stop(now + 0.6);
     }
+    if (type === "coalesce") {
+      // Crystallization shimmer — rising harmonics as stars merge into diamond
+      [440, 660, 880, 1100].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = "sine";
+        o.frequency.setValueAtTime(freq * 0.5, now + i * 0.12);
+        o.frequency.exponentialRampToValueAtTime(freq, now + i * 0.12 + 0.25);
+        g.gain.setValueAtTime(0, now + i * 0.12);
+        g.gain.linearRampToValueAtTime(0.035, now + i * 0.12 + 0.08);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.7);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.7);
+      });
+    }
   }
 }
 const sound = new SoundEngine();
@@ -196,7 +209,55 @@ function keywordToSpherePos(keyword, radius) {
 
 // ─── NLP ───
 const STOP = new Set(["i","me","my","the","a","an","is","was","am","are","be","been","to","of","in","for","on","with","at","by","it","its","and","or","but","not","no","so","if","do","did","has","had","have","this","that","what","when","where","how","who","all","just","very","really","too","about","out","up","can","will","would","should","could","get","got","being","some","than","them","then","they","from","like","feel","feeling","think","thinking","know","thing","things","going","want","need","much","way","even","still","right","now","today","always","never","every","something","anything","everything","been","also","into","more","most","over","such","only","through","back","after","before","other","make","first","come","made","well","here","take","many","because","does","each","same","different","kind","between","under","while","again","off","down","keep","around","another","though","during","few","both","these","those","since"]);
-function extractKw(t) { return t.toLowerCase().replace(/[^a-z\s]/g,"").split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)); }
+
+// ─── Keyword Normalization ───
+// Maps variant word forms to canonical keywords for smarter aggregation.
+// "built", "building", "builds" all → "build". "isolated", "alone" → "lonely".
+const CANONICAL_FORMS = {
+  built: "build", building: "build", builds: "build", builder: "build",
+  creating: "create", created: "create", creates: "create", creation: "create",
+  hopeful: "hope", hoping: "hope", hopes: "hope", hoped: "hope",
+  sleeping: "sleep", slept: "sleep", sleeps: "sleep", sleepless: "sleep",
+  working: "work", worked: "work", works: "work",
+  isolated: "lonely", alone: "lonely", loneliness: "lonely",
+  exhausted: "exhaust", exhausting: "exhaust", exhaustion: "exhaust", depleted: "exhaust", drained: "exhaust", fatigued: "exhaust",
+  frustrated: "frustrate", frustrating: "frustrate", frustration: "frustrate",
+  peaceful: "peace", grounded: "peace",
+  clarity: "clear", clearer: "clear",
+  confident: "confidence",
+  grateful: "gratitude",
+  excited: "excite", exciting: "excite", excitement: "excite",
+  stressing: "stress", stressed: "stress", stressful: "stress",
+  worried: "worry", worries: "worry", worrying: "worry",
+  scared: "fear", afraid: "fear", fearful: "fear", terrified: "fear",
+  angry: "anger", angrier: "anger",
+  happier: "happy", happiness: "happy",
+  sadder: "sad", sadness: "sad",
+  comparing: "compare", compared: "compare",
+  spiraling: "spiral", racing: "race",
+  questioning: "question", improving: "improve",
+  shifting: "shift", holding: "hold",
+};
+function normalizeKeyword(w) { return CANONICAL_FORMS[w] || w; }
+
+// Improved keyword extraction with edge case handling.
+// Single words, names, and very short input all produce usable keywords.
+function extractKw(t) {
+  const words = t.toLowerCase().replace(/[^a-z'\s]/g, "").split(/\s+/).filter(w => w.length > 0);
+  // Standard: filter stop words, normalize, deduplicate
+  const filtered = words.filter(w => w.length > 2 && !STOP.has(w)).map(normalizeKeyword);
+  const unique = [...new Set(filtered)];
+  if (unique.length > 0) return unique;
+  // Fallback for names / short input: use words > 2 chars even if stop words
+  const fallback = words.filter(w => w.length > 2).map(normalizeKeyword);
+  if (fallback.length > 0) return [...new Set(fallback)];
+  // Last resort: single short word (e.g. "ok", "no") — use the longest word
+  if (words.length > 0) {
+    const longest = words.reduce((a, b) => a.length >= b.length ? a : b);
+    return [normalizeKeyword(longest)];
+  }
+  return ["thought"];
+}
 
 // ─── Improved Categorization ───
 // Much broader keyword coverage to minimize uncategorized
@@ -423,6 +484,9 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
   const mouseVec = useRef(new THREE.Vector2());
   const modeRef = useRef(viewMode || "surface");
   const mouseRef = useRef({ x: 0, y: 0 });
+  // Track when clusters cross aggregation threshold (freq 3+) for formation animation
+  const formingRef = useRef(new Map()); // clusterLabel → timestamp (ms)
+  const thoughtStarsRef = useRef([]); // track thought star sprites separately
 
   useEffect(() => { modeRef.current = viewMode; }, [viewMode]);
 
@@ -1166,15 +1230,51 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
         pl.intensity = 0.0;
       }
 
-      // ─── Shared: billboard markers toward camera ───
+      // ─── Shared: billboard markers + thought star animation ───
       const halfTerrain = TERRAIN_SIZE * 0.5;
+      const nowMs = Date.now();
+
       markersRef.current.forEach(m => {
         m.quaternion.copy(cam.quaternion);
         const baseScale = m.userData.baseScale || 0.05;
-        const pulse = baseScale * (1 + Math.sin(t * 2.5 + m.userData.seed) * 0.15);
-        m.scale.setScalar(pulse);
 
-        // In surface mode, wrap marker positions relative to player for seamless planet
+        if (m.userData.isThoughtStar) {
+          // ── Thought star animation ──
+          if (m.userData.isAggregated && mode === "surface") {
+            // Aggregated: orbit the diamond center with gentle spiraling
+            const orbitSpeed = 0.4 + (m.userData.seed % 1) * 0.3;
+            const orbitAngle = t * orbitSpeed + m.userData.offsetAngle;
+            const orbitR = m.userData.spreadDist * 0.6;
+            m.userData.worldX = m.userData.clusterX + Math.cos(orbitAngle) * orbitR;
+            m.userData.worldZ = m.userData.clusterZ + Math.sin(orbitAngle) * orbitR;
+            m.position.y = 0.4 + Math.sin(t * 1.2 + m.userData.seed) * 0.12;
+          }
+          // Twinkle animation — faster and more sparkly than diamonds
+          const twinkle = baseScale * (1 + Math.sin(t * 4.0 + m.userData.seed * 3.7) * 0.3);
+          m.scale.setScalar(twinkle);
+        } else if (m.userData.isDiamond) {
+          // ── Diamond formation animation ──
+          const age = nowMs - (m.userData.birthTime || 0);
+          const formationDuration = 2000; // 2 seconds
+          if (age < formationDuration) {
+            // Scale up from 0 during formation
+            const progress = age / formationDuration;
+            const eased = progress < 0.5
+              ? 4 * progress * progress * progress
+              : 1 - Math.pow(-2 * progress + 2, 3) / 2; // easeInOutCubic
+            m.scale.setScalar(baseScale * eased);
+          } else {
+            // Normal diamond pulse
+            const pulse = baseScale * (1 + Math.sin(t * 2.5 + m.userData.seed) * 0.15);
+            m.scale.setScalar(pulse);
+          }
+        } else {
+          // Regular marker pulse
+          const pulse = baseScale * (1 + Math.sin(t * 2.5 + m.userData.seed) * 0.15);
+          m.scale.setScalar(pulse);
+        }
+
+        // Surface mode: wrap positions relative to player
         if (mode === "surface" && m.userData.worldX !== undefined) {
           let dx = m.userData.worldX - surf.x;
           let dz = m.userData.worldZ - surf.z;
@@ -1251,7 +1351,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     };
   }, [clusterData, onMarkerClick]);
 
-  // ─── Update markers for both modes when clusters change ───
+  // ─── Update markers: thought stars + diamond markers ───
   useEffect(() => {
     const { surfaceMarkerGroup, planetMarkerGroup } = sceneRef.current;
     if (!surfaceMarkerGroup || !planetMarkerGroup) return;
@@ -1259,15 +1359,28 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
     while (surfaceMarkerGroup.children.length) surfaceMarkerGroup.remove(surfaceMarkerGroup.children[0]);
     while (planetMarkerGroup.children.length) planetMarkerGroup.remove(planetMarkerGroup.children[0]);
     markersRef.current = [];
+    thoughtStarsRef.current = [];
 
+    // Clean formingRef: remove clusters that no longer exist
+    for (const label of formingRef.current.keys()) {
+      if (!clusterData.find(c => c.label === label)) formingRef.current.delete(label);
+    }
+
+    // ═══ DIAMOND MARKERS — only for aggregated clusters (freq >= 3) ═══
     clusterData.forEach((c, idx) => {
-      // Shared texture — larger canvas with emotion-colored glow halo
+      if (c.frequency < 3) return; // below threshold — stars only, no diamond
+
+      // Track formation time for animation
+      if (!formingRef.current.has(c.label)) {
+        formingRef.current.set(c.label, Date.now());
+      }
+
       const canvas = document.createElement("canvas");
       canvas.width = 48; canvas.height = 48;
       const ctx = canvas.getContext("2d");
       const hex = c.colorData.hex;
 
-      // Outer glow halo — soft radial gradient in emotion color
+      // Outer glow halo
       const grad = ctx.createRadialGradient(24, 24, 4, 24, 24, 22);
       grad.addColorStop(0, hex + "aa");
       grad.addColorStop(0.4, hex + "44");
@@ -1275,67 +1388,157 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, 48, 48);
 
-      // Diamond marker
+      // Diamond shape
       ctx.shadowColor = hex; ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.moveTo(24, 6); ctx.lineTo(38, 24); ctx.lineTo(24, 42); ctx.lineTo(10, 24);
       ctx.closePath();
       ctx.fillStyle = hex; ctx.globalAlpha = 0.95; ctx.fill();
       ctx.globalAlpha = 1; ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1; ctx.stroke();
-      // Inner bright core for high frequency clusters
-      if (c.frequency >= 3) {
-        ctx.beginPath(); ctx.arc(24, 24, 3, 0, Math.PI * 2);
-        ctx.fillStyle = "#fff"; ctx.globalAlpha = 0.9; ctx.fill();
-      }
+      // Inner bright core
+      ctx.beginPath(); ctx.arc(24, 24, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.globalAlpha = 0.9; ctx.fill();
       if (c.frequency >= 6) {
-        // Extra ring for massive clusters
         ctx.beginPath(); ctx.arc(24, 24, 8, 0, Math.PI * 2);
         ctx.strokeStyle = hex; ctx.globalAlpha = 0.4; ctx.lineWidth = 1.5; ctx.stroke();
       }
       const texture = new THREE.CanvasTexture(canvas);
+      const birthTime = formingRef.current.get(c.label);
 
-      // Surface marker: floating above flat terrain
+      // Surface diamond
       const surfMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, sizeAttenuation: true });
       const surfSprite = new THREE.Sprite(surfMat);
       surfSprite.position.set(c.planeX, 0.8 + (c.flareScale || 0) * 2, c.planeZ);
       const surfBase = 0.35 + Math.min(c.frequency * 0.04, 0.3);
       surfSprite.scale.setScalar(surfBase);
-      surfSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: surfBase, worldX: c.planeX, worldZ: c.planeZ };
+      surfSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: surfBase, worldX: c.planeX, worldZ: c.planeZ, isDiamond: true, birthTime };
       surfaceMarkerGroup.add(surfSprite);
       markersRef.current.push(surfSprite);
 
-      // Planet marker: on sphere surface
+      // Planet diamond
       const planetMat = new THREE.SpriteMaterial({ map: texture.clone(), transparent: true, depthWrite: false, sizeAttenuation: true });
       const planetSprite = new THREE.Sprite(planetMat);
       const planetPos = c.direction.clone().multiplyScalar(2.8 + 0.06 + (c.flareScale || 0));
       planetSprite.position.copy(planetPos);
       const planetBase = 0.04 + Math.min(c.frequency * 0.005, 0.04);
       planetSprite.scale.setScalar(planetBase);
-      planetSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: planetBase };
+      planetSprite.userData = { clusterLabel: c.label, seed: idx * 1.7, baseScale: planetBase, isDiamond: true, birthTime };
       planetMarkerGroup.add(planetSprite);
       markersRef.current.push(planetSprite);
 
-      // Emission point light at each cluster on the planet — illuminates nearby terrain
+      // Point lights
       if (c.frequency >= 2) {
         const lightColor = new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
-        const intensity = Math.min(c.frequency * 0.08, 0.6);
-        const clusterLight = new THREE.PointLight(lightColor, intensity, 2.5);
-        const lightPos = c.direction.clone().multiplyScalar(2.8 + 0.15);
-        clusterLight.position.copy(lightPos);
+        const clusterLight = new THREE.PointLight(lightColor, Math.min(c.frequency * 0.08, 0.6), 2.5);
+        clusterLight.position.copy(c.direction.clone().multiplyScalar(2.8 + 0.15));
         planetMarkerGroup.add(clusterLight);
-      }
-
-      // Surface mode: point light too for terrain glow
-      if (c.frequency >= 2) {
-        const lightColor = new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
-        const intensity = Math.min(c.frequency * 0.1, 0.8);
-        const surfLight = new THREE.PointLight(lightColor, intensity, 12);
+        const surfLight = new THREE.PointLight(lightColor, Math.min(c.frequency * 0.1, 0.8), 12);
         surfLight.position.set(c.planeX, 1.5 + (c.flareScale || 0) * 2, c.planeZ);
         surfLight.userData = { worldX: c.planeX, worldZ: c.planeZ };
         surfaceMarkerGroup.add(surfLight);
       }
     });
-  }, [clusterData]);
+
+    // ═══ THOUGHT STARS — one tiny star per individual entry ═══
+    const goldenAngle = 2.399963; // radians — golden ratio angle for even spiral distribution
+    const TERRAIN_SZ = TERRAIN_SIZE;
+
+    entries.forEach((entry, entryIdx) => {
+      const primaryKw = normalizeKeyword((entry.keywords && entry.keywords[0]) || "thought");
+      const { phi, theta } = hashToAngle(primaryKw);
+
+      // Check if this star belongs to an aggregated cluster
+      const cluster = clusterData.find(c => c.label === primaryKw);
+      const isAggregated = cluster && cluster.frequency >= 3;
+
+      // Position offset — golden angle spiral so stars don't overlap
+      const offsetAngle = entryIdx * goldenAngle;
+      const spreadDist = isAggregated ? (1.5 + (entryIdx % 5) * 0.5) : (2.5 + (entryIdx % 8) * 0.8);
+
+      // Surface position
+      const baseX = ((theta / (Math.PI * 2)) - 0.5) * TERRAIN_SZ;
+      const baseZ = ((phi / Math.PI) - 0.5) * TERRAIN_SZ;
+      const starX = baseX + Math.cos(offsetAngle) * spreadDist;
+      const starZ = baseZ + Math.sin(offsetAngle) * spreadDist;
+
+      // Create tiny star texture
+      const ec = getEmotionColor(entry.emotion);
+      const starCanvas = document.createElement("canvas");
+      starCanvas.width = 16; starCanvas.height = 16;
+      const sctx = starCanvas.getContext("2d");
+
+      // Glowing point — white core fading to emotion color
+      const sGrad = sctx.createRadialGradient(8, 8, 0, 8, 8, 7);
+      sGrad.addColorStop(0, "#ffffffee");
+      sGrad.addColorStop(0.25, ec.hex + "cc");
+      sGrad.addColorStop(0.6, ec.hex + "55");
+      sGrad.addColorStop(1, ec.hex + "00");
+      sctx.fillStyle = sGrad;
+      sctx.beginPath();
+      sctx.arc(8, 8, 7, 0, Math.PI * 2);
+      sctx.fill();
+
+      // Tiny cross flare for sparkle
+      sctx.strokeStyle = "#ffffff44";
+      sctx.lineWidth = 0.5;
+      sctx.beginPath(); sctx.moveTo(8, 2); sctx.lineTo(8, 14); sctx.stroke();
+      sctx.beginPath(); sctx.moveTo(2, 8); sctx.lineTo(14, 8); sctx.stroke();
+
+      const starTex = new THREE.CanvasTexture(starCanvas);
+
+      // ── Surface thought star ──
+      const sMat = new THREE.SpriteMaterial({ map: starTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.75 : 0.9 });
+      const sStar = new THREE.Sprite(sMat);
+      sStar.position.set(starX, 0.3 + Math.random() * 0.3, starZ);
+      const sBase = isAggregated ? 0.12 : 0.18;
+      sStar.scale.setScalar(sBase);
+      sStar.userData = {
+        clusterLabel: primaryKw, seed: entryIdx * 2.3 + 0.5, baseScale: sBase,
+        worldX: starX, worldZ: starZ, isThoughtStar: true, isAggregated,
+        clusterX: baseX, clusterZ: baseZ, spreadDist, offsetAngle,
+        thoughtId: entry.id,
+      };
+      surfaceMarkerGroup.add(sStar);
+      markersRef.current.push(sStar);
+      thoughtStarsRef.current.push(sStar);
+
+      // ── Planet thought star ──
+      const sphereDir = keywordToSpherePos(primaryKw, 1).normalize();
+      // Offset on sphere surface using tangent/bitangent
+      const tangent = new THREE.Vector3(-sphereDir.z, 0, sphereDir.x).normalize();
+      const bitangent = new THREE.Vector3().crossVectors(sphereDir, tangent).normalize();
+      const pSpreadDist = isAggregated ? 0.02 + (entryIdx % 5) * 0.008 : 0.04 + (entryIdx % 8) * 0.01;
+      const pDir = sphereDir.clone()
+        .addScaledVector(tangent, Math.cos(offsetAngle) * pSpreadDist)
+        .addScaledVector(bitangent, Math.sin(offsetAngle) * pSpreadDist)
+        .normalize();
+
+      const pMat = new THREE.SpriteMaterial({ map: starTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.7 : 0.85 });
+      const pStar = new THREE.Sprite(pMat);
+      pStar.position.copy(pDir.clone().multiplyScalar(2.82));
+      const pBase = isAggregated ? 0.012 : 0.018;
+      pStar.scale.setScalar(pBase);
+      pStar.userData = {
+        clusterLabel: primaryKw, seed: entryIdx * 2.3 + 0.5, baseScale: pBase,
+        isThoughtStar: true, isAggregated, thoughtId: entry.id,
+        sphereDir: pDir.clone(), spreadDist: pSpreadDist,
+      };
+      planetMarkerGroup.add(pStar);
+      markersRef.current.push(pStar);
+      thoughtStarsRef.current.push(pStar);
+    });
+
+    // Also add point lights for freq >= 2 non-diamond clusters
+    clusterData.forEach(c => {
+      if (c.frequency >= 2 && c.frequency < 3) {
+        const lightColor = new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
+        const surfLight = new THREE.PointLight(lightColor, Math.min(c.frequency * 0.1, 0.4), 8);
+        surfLight.position.set(c.planeX, 1.0, c.planeZ);
+        surfLight.userData = { worldX: c.planeX, worldZ: c.planeZ };
+        surfaceMarkerGroup.add(surfLight);
+      }
+    });
+  }, [clusterData, entries]);
 
   return <div ref={mountRef} style={{ width: "100%", height: "100%", position: "absolute", top: 0, left: 0, cursor: "grab", touchAction: "none" }} />;
 }
@@ -1345,7 +1548,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
 function ClusterPopup({ cluster, entries, onClose }) {
   if (!cluster) return null;
   const ec = getEmotionColor(cluster.emotion);
-  const relatedEntries = entries.filter(e => e.keywords.includes(cluster.label));
+  const relatedEntries = entries.filter(e => e.keywords.some(k => normalizeKeyword(k) === cluster.label));
   const trend = emotionToTrend(cluster.emotion);
   const typeLabel = trend === "stress" ? "crater" : trend === "resolved" ? "flare" : "ridge";
 
@@ -1396,13 +1599,17 @@ function CategorySidebar({ clusters, entries, isOpen, onToggle, onClusterClick }
   const [openCats, setOpenCats] = useState({});
 
   const grouped = useMemo(() => {
-    const allKw = clusters.map(c => c.label);
-    const cats = categorizeKeywords(allKw);
-    const result = {};
-    for (const [cat, keywords] of Object.entries(cats)) {
-      result[cat] = keywords.map(kw => clusters.find(c => c.label === kw)).filter(Boolean);
-    }
-    return result;
+    // Categorize clusters: use raw keyword variants for category matching, then map back to clusters
+    const clusterByCat = {};
+    clusters.forEach(c => {
+      const searchWords = [c.label, ...(c.rawKeywords || [])];
+      const cats = categorizeKeywords(searchWords);
+      // Take the first category that matches (most specific)
+      const cat = Object.keys(cats)[0] || "other";
+      if (!clusterByCat[cat]) clusterByCat[cat] = [];
+      if (!clusterByCat[cat].find(x => x.label === c.label)) clusterByCat[cat].push(c);
+    });
+    return clusterByCat;
   }, [clusters]);
 
   const toggleCat = (cat) => { setOpenCats(prev => ({ ...prev, [cat]: !prev[cat] })); sound.play("hover"); };
@@ -1639,12 +1846,13 @@ export default function Coil() {
 
   const buildClusters = useCallback((list) => {
     const m = {};
-    // Phase 1: aggregate by keyword
+    // Phase 1: aggregate by NORMALIZED keyword — "built"/"building" → "build"
     list.forEach(e => e.keywords.forEach(k => {
-      if (!m[k]) m[k] = { label: k, frequency: 0, firstSeen: e.timestamp, lastSeen: e.timestamp, emotion: e.emotion, entries: [], emotionCounts: {} };
-      m[k].frequency++; m[k].lastSeen = e.timestamp; m[k].entries.push(e.id);
-      // Track emotion frequency to pick the dominant emotion for each cluster
-      m[k].emotionCounts[e.emotion] = (m[k].emotionCounts[e.emotion] || 0) + 1;
+      const nk = normalizeKeyword(k);
+      if (!m[nk]) m[nk] = { label: nk, frequency: 0, firstSeen: e.timestamp, lastSeen: e.timestamp, emotion: e.emotion, entries: [], emotionCounts: {}, rawKeywords: new Set() };
+      m[nk].frequency++; m[nk].lastSeen = e.timestamp; m[nk].entries.push(e.id);
+      m[nk].rawKeywords.add(k);
+      m[nk].emotionCounts[e.emotion] = (m[nk].emotionCounts[e.emotion] || 0) + 1;
     }));
     // Phase 2: assign dominant emotion (most frequent emotion for this keyword)
     Object.values(m).forEach(cluster => {
@@ -1653,6 +1861,7 @@ export default function Coil() {
         if (count > maxCount) { maxCount = count; dominant = em; }
       }
       cluster.emotion = dominant;
+      cluster.rawKeywords = [...cluster.rawKeywords]; // Set → Array
     });
     return Object.values(m).filter(p => p.frequency >= 1).sort((a, b) => b.frequency - a.frequency).slice(0, 40);
   }, []);
@@ -1682,26 +1891,44 @@ export default function Coil() {
     const ts = `${now.toLocaleString("default", { month: "short" })} ${now.getDate()}`;
     const ne = { id: Date.now(), timestamp: ts, rawText: inputText, keywords: kw, emotion, tone };
     const all = [...entries, ne];
+
+    // Snapshot old cluster freqs to detect aggregation threshold crossing
+    const oldFreqs = {};
+    clusters.forEach(c => { oldFreqs[c.label] = c.frequency; });
+
     const newClusters = buildClusters(all);
     setEntries(all); setClusters(newClusters); setInputText("");
     setFlash(true); setTimeout(() => setFlash(false), 800);
-    sound.play("impact");
+
+    // Detect if any cluster just crossed the aggregation threshold (freq 3)
+    let coalesced = false;
+    newClusters.forEach(c => {
+      const oldFreq = oldFreqs[c.label] || 0;
+      if (oldFreq < 3 && c.frequency >= 3) coalesced = true;
+    });
+
+    if (coalesced) {
+      // Stars are merging into a diamond — play crystallization sound
+      sound.play("coalesce");
+    } else {
+      sound.play("impact");
+    }
+
     // Navigate to the thought's terrain location
     if (kw.length > 0) {
-      // Find which keyword has the most aggregation (most interesting to show)
       const bestKw = kw.reduce((best, k) => {
-        const cluster = newClusters.find(c => c.label === k);
-        return (cluster && cluster.frequency > (best.freq || 0)) ? { kw: k, freq: cluster.frequency } : best;
-      }, { kw: kw[0], freq: 0 });
+        const nk = normalizeKeyword(k);
+        const cluster = newClusters.find(c => c.label === nk);
+        return (cluster && cluster.frequency > (best.freq || 0)) ? { kw: nk, freq: cluster.frequency } : best;
+      }, { kw: normalizeKeyword(kw[0]), freq: 0 });
       setZoomTarget(null);
       setTimeout(() => setZoomTarget(bestKw.kw), 300);
-      // If this keyword has aggregated (3+ thoughts), show the cluster popup
       const cluster = newClusters.find(c => c.label === bestKw.kw);
       if (cluster && cluster.frequency >= 3) {
         setTimeout(() => setSelectedCluster(cluster), 800);
       }
     }
-  }, [inputText, entries, buildClusters]);
+  }, [inputText, entries, clusters, buildClusters]);
 
   const handleMarkerClick = useCallback((label) => {
     const cluster = clusters.find(c => c.label === label);
