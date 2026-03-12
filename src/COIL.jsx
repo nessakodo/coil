@@ -987,12 +987,10 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
           const md = Math.hypot(lx, lz);
           if (md < 4) elev += Math.sin(md * 2.5 - t * 4) * 0.05 * Math.max(0, 1 - md / 4);
 
-          // Cluster deformations — use wrapped distance so clusters tile with terrain
+          // Cluster deformations — wrapped distance for toroidal surface
           for (const cluster of clusterData) {
-            // Wrapped distance: shortest path on toroidal surface
             let dx = wx - cluster.planeX;
             let dz = wz - cluster.planeZ;
-            // Wrap to nearest instance
             if (dx > halfT) dx -= TERRAIN_SIZE;
             if (dx < -halfT) dx += TERRAIN_SIZE;
             if (dz > halfT) dz -= TERRAIN_SIZE;
@@ -1002,23 +1000,35 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
             const influence = Math.max(0, 1 - d / radius);
             if (influence > 0) {
               const eased = influence * influence * (3 - 2 * influence);
+              const freq = cluster.frequency;
+
               if (cluster.trend === "stress") {
-                elev -= eased * cluster.craterScale * 25;
-                const glow = 0.5 + Math.min(cluster.frequency * 0.08, 0.5);
+                // Small literal craters — gentle terrain dip
+                const terrainCraterDepth = freq < 3 ? 0 : freq < 5 ? 0.3 : freq < 8 ? 0.6 : 1.0;
+                elev -= eased * terrainCraterDepth;
+                const glow = (freq < 3 ? 0.2 : freq < 5 ? 0.35 : 0.5) + Math.min(freq * 0.04, 0.3);
                 cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow * 0.6;
-                cb += eased * cluster.colorData.b * glow * 0.6;
+                cg += eased * cluster.colorData.g * glow * 0.5;
+                cb += eased * cluster.colorData.b * glow * 0.5;
               } else if (cluster.trend === "resolved") {
-                elev += eased * cluster.flareScale * 20 * (1 + Math.sin(t * 0.8) * 0.06);
-                const glow = 0.55 + Math.min(cluster.frequency * 0.08, 0.5);
+                // Animated budding flares on terrain
+                const terrainFlareHeight = freq < 3 ? 0 : freq < 5 ? 0.2 : freq < 8 ? 0.5 : 0.8;
+                const pulseSpeed = 0.6 + freq * 0.15;
+                const pulseAmp = freq < 5 ? 0.1 : freq < 8 ? 0.2 : 0.3;
+                const budding = 1.0 + Math.sin(t * pulseSpeed + d * 0.5) * pulseAmp;
+                elev += eased * terrainFlareHeight * budding;
+                const glow = (freq < 3 ? 0.25 : freq < 5 ? 0.4 : 0.55) + Math.min(freq * 0.04, 0.3);
+                const colorPulse = 0.8 + Math.sin(t * pulseSpeed * 0.7) * 0.2;
+                cr += eased * cluster.colorData.r * glow * colorPulse;
+                cg += eased * cluster.colorData.g * glow * colorPulse;
+                cb += eased * cluster.colorData.b * glow * 0.8 * colorPulse;
+              } else {
+                const terrainNeutral = freq < 3 ? 0 : Math.min(freq * 0.08, 0.4);
+                elev += eased * terrainNeutral;
+                const glow = freq < 3 ? 0.15 : 0.25;
                 cr += eased * cluster.colorData.r * glow;
                 cg += eased * cluster.colorData.g * glow;
-                cb += eased * cluster.colorData.b * glow * 0.8;
-              } else {
-                elev += eased * cluster.neutralScale * 8;
-                cr += eased * cluster.colorData.r * 0.3;
-                cg += eased * cluster.colorData.g * 0.3;
-                cb += eased * cluster.colorData.b * 0.25;
+                cb += eased * cluster.colorData.b * glow;
               }
             }
           }
@@ -1094,27 +1104,39 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
           for (const cluster of clusterData) {
             const dot = dir.dot(cluster.direction);
             const angularDist = Math.acos(Math.min(1, Math.max(-1, dot)));
-            const radius = 0.35 + Math.min(cluster.frequency * 0.03, 0.2);
+            const radius = 0.25 + Math.min(cluster.frequency * 0.025, 0.15);
             const influence = Math.max(0, 1 - angularDist / radius);
             if (influence > 0) {
               const eased = influence * influence * (3 - 2 * influence);
+              const freq = cluster.frequency;
+
               if (cluster.trend === "stress") {
+                // Craters: small literal dips, gentle pulsing at edges
                 displacement -= eased * cluster.craterScale;
-                const glow = 0.4 + Math.min(cluster.frequency * 0.06, 0.4);
+                // Color glow scales with frequency
+                const glow = (freq < 3 ? 0.2 : freq < 5 ? 0.35 : 0.5) + Math.min(freq * 0.04, 0.3);
                 cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow * 0.6;
-                cb += eased * cluster.colorData.b * glow * 0.6;
+                cg += eased * cluster.colorData.g * glow * 0.5;
+                cb += eased * cluster.colorData.b * glow * 0.5;
               } else if (cluster.trend === "resolved") {
-                displacement += eased * cluster.flareScale * (1 + Math.sin(t * 0.8) * 0.05);
-                const glow = 0.45 + Math.min(cluster.frequency * 0.06, 0.4);
-                cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow;
-                cb += eased * cluster.colorData.b * glow * 0.8;
+                // Flares: animated budding — they pulse and breathe
+                // Small flares pulse gently, big ones have stronger animation
+                const pulseSpeed = 0.6 + freq * 0.15;
+                const pulseAmp = freq < 5 ? 0.15 : freq < 8 ? 0.25 : 0.35;
+                const budding = 1.0 + Math.sin(t * pulseSpeed + angularDist * 8) * pulseAmp;
+                displacement += eased * cluster.flareScale * budding;
+                const glow = (freq < 3 ? 0.25 : freq < 5 ? 0.4 : 0.55) + Math.min(freq * 0.04, 0.3);
+                // Flare color also pulses with the budding
+                const colorPulse = 0.8 + Math.sin(t * pulseSpeed * 0.7) * 0.2;
+                cr += eased * cluster.colorData.r * glow * colorPulse;
+                cg += eased * cluster.colorData.g * glow * colorPulse;
+                cb += eased * cluster.colorData.b * glow * 0.8 * colorPulse;
               } else {
                 displacement += eased * cluster.neutralScale;
-                cr += eased * cluster.colorData.r * 0.3;
-                cg += eased * cluster.colorData.g * 0.3;
-                cb += eased * cluster.colorData.b * 0.25;
+                const glow = freq < 3 ? 0.15 : 0.25;
+                cr += eased * cluster.colorData.r * glow;
+                cg += eased * cluster.colorData.g * glow;
+                cb += eased * cluster.colorData.b * glow;
               }
             }
           }
@@ -1660,12 +1682,24 @@ export default function Coil() {
     const ts = `${now.toLocaleString("default", { month: "short" })} ${now.getDate()}`;
     const ne = { id: Date.now(), timestamp: ts, rawText: inputText, keywords: kw, emotion, tone };
     const all = [...entries, ne];
-    setEntries(all); setClusters(buildClusters(all)); setInputText("");
+    const newClusters = buildClusters(all);
+    setEntries(all); setClusters(newClusters); setInputText("");
     setFlash(true); setTimeout(() => setFlash(false), 800);
     sound.play("impact");
-    // Zoom camera to the new thought
+    // Navigate to the thought's terrain location
     if (kw.length > 0) {
-      setTimeout(() => setZoomTarget(kw[0]), 300);
+      // Find which keyword has the most aggregation (most interesting to show)
+      const bestKw = kw.reduce((best, k) => {
+        const cluster = newClusters.find(c => c.label === k);
+        return (cluster && cluster.frequency > (best.freq || 0)) ? { kw: k, freq: cluster.frequency } : best;
+      }, { kw: kw[0], freq: 0 });
+      setZoomTarget(null);
+      setTimeout(() => setZoomTarget(bestKw.kw), 300);
+      // If this keyword has aggregated (3+ thoughts), show the cluster popup
+      const cluster = newClusters.find(c => c.label === bestKw.kw);
+      if (cluster && cluster.frequency >= 3) {
+        setTimeout(() => setSelectedCluster(cluster), 800);
+      }
     }
   }, [inputText, entries, buildClusters]);
 
