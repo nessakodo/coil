@@ -439,9 +439,15 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
       const planeZ = ((phi / Math.PI) - 0.5) * TERRAIN_SIZE;
       const trend = emotionToTrend(c.emotion);
       const ec = getEmotionColor(c.emotion);
-      const craterScale = trend === "stress" ? Math.log2(1 + c.frequency) * 0.015 : 0;
-      const flareScale = trend === "resolved" ? Math.min(c.frequency * 0.02, 0.12) : 0;
-      const neutralScale = trend === "neutral" ? Math.min(c.frequency * 0.01, 0.06) : 0;
+      // Deformation thresholds:
+      // 1-2 thoughts: color only, no deformation
+      // 3-4: subtle crater/bud (tiny dip or bump)
+      // 5-7: visible crater/flare
+      // 8+: pronounced but still planet-preserving
+      const freq = c.frequency;
+      const craterScale = trend === "stress" ? (freq < 3 ? 0 : freq < 5 ? 0.005 : freq < 8 ? 0.01 : 0.018) : 0;
+      const flareScale = trend === "resolved" ? (freq < 3 ? 0 : freq < 5 ? 0.004 : freq < 8 ? 0.008 : 0.014) : 0;
+      const neutralScale = trend === "neutral" ? (freq < 3 ? 0 : Math.min(freq * 0.003, 0.012)) : 0;
       return {
         ...c, spherePos: pos, direction: pos.clone().normalize(),
         planeX, planeZ,
