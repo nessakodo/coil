@@ -161,33 +161,40 @@ class SoundEngine {
         o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.7);
       });
     }
-    if (type === "starClick") {
-      // Gentle crystalline ping — light and airy, like tapping a tiny bell
+    if (type === "miniDiamondClick") {
+      // Glass marble drop — short, bright, percussive with a ring-out
       const o1 = this.ctx.createOscillator(); const g1 = this.ctx.createGain();
-      o1.type = "sine"; o1.frequency.setValueAtTime(1400, now); o1.frequency.exponentialRampToValueAtTime(2200, now + 0.08);
-      g1.gain.setValueAtTime(0.06, now); g1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-      o1.connect(g1).connect(this.ctx.destination); o1.start(now); o1.stop(now + 0.35);
-      // Harmonic shimmer
+      const f1 = this.ctx.createBiquadFilter();
+      o1.type = "sine"; o1.frequency.setValueAtTime(2400, now); o1.frequency.exponentialRampToValueAtTime(1600, now + 0.15);
+      f1.type = "highpass"; f1.frequency.value = 800;
+      g1.gain.setValueAtTime(0.06, now); g1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      o1.connect(f1).connect(g1).connect(this.ctx.destination); o1.start(now); o1.stop(now + 0.3);
+      // Tiny metallic ping — the marble hitting glass
       const o2 = this.ctx.createOscillator(); const g2 = this.ctx.createGain();
-      o2.type = "sine"; o2.frequency.value = 2800;
-      g2.gain.setValueAtTime(0.02, now + 0.03); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-      o2.connect(g2).connect(this.ctx.destination); o2.start(now + 0.03); o2.stop(now + 0.25);
+      o2.type = "triangle"; o2.frequency.setValueAtTime(4200, now); o2.frequency.exponentialRampToValueAtTime(3600, now + 0.06);
+      g2.gain.setValueAtTime(0.025, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      o2.connect(g2).connect(this.ctx.destination); o2.start(now); o2.stop(now + 0.12);
     }
     if (type === "diamondClick") {
-      // Deeper, resonant chime — like a gemstone vibrating, richer and fuller
-      [523, 659, 784].forEach((freq, i) => {
+      // Cathedral bell strike — warm fundamental with long decay and harmonic overtones
+      const fundamental = 262; // C4 — middle C
+      [1, 2, 3, 4.75, 6.2].forEach((harmonic, i) => {
         const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
-        o.type = "triangle"; o.frequency.setValueAtTime(freq, now + i * 0.05);
-        o.frequency.exponentialRampToValueAtTime(freq * 0.95, now + i * 0.05 + 0.4);
-        g.gain.setValueAtTime(0.05, now + i * 0.05);
-        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.5);
-        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.05); o.stop(now + i * 0.05 + 0.5);
+        o.type = i === 0 ? "triangle" : "sine";
+        o.frequency.setValueAtTime(fundamental * harmonic, now);
+        o.frequency.exponentialRampToValueAtTime(fundamental * harmonic * 0.998, now + 1.2);
+        const vol = 0.045 / (1 + i * 0.6);
+        g.gain.setValueAtTime(vol, now + i * 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.2 - i * 0.1);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.01); o.stop(now + 1.2);
       });
-      // Low sub for weight
+      // Sub rumble — you feel this one
       const sub = this.ctx.createOscillator(); const sg = this.ctx.createGain();
-      sub.type = "sine"; sub.frequency.value = 220;
-      sg.gain.setValueAtTime(0.04, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-      sub.connect(sg).connect(this.ctx.destination); sub.start(now); sub.stop(now + 0.6);
+      const sf = this.ctx.createBiquadFilter();
+      sub.type = "sine"; sub.frequency.value = 82;
+      sf.type = "lowpass"; sf.frequency.value = 200;
+      sg.gain.setValueAtTime(0.06, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+      sub.connect(sf).connect(sg).connect(this.ctx.destination); sub.start(now); sub.stop(now + 1.0);
     }
     if (type === "transform") {
       // Stars-to-diamond transformation — ascending cascade then crystallization snap
@@ -581,11 +588,11 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
     const { phi, theta } = hashToAngle(zoomTarget);
     const px = ((theta / (Math.PI * 2)) - 0.5) * TERRAIN_SIZE;
     const pz = ((phi / Math.PI) - 0.5) * TERRAIN_SIZE;
-    // Snap immediately so user sees the thought location right away
+    // Position camera just behind the thought so the mini-diamond is centered in view
     surfRef.current.x = px;
-    surfRef.current.z = pz + 5;
+    surfRef.current.z = pz + 3.5;
     surfRef.current.targetX = px;
-    surfRef.current.targetZ = pz + 5;
+    surfRef.current.targetZ = pz + 3.5;
     surfRef.current.targetYaw = Math.atan2(0, -1); // face toward the cluster
     surfRef.current.yaw = surfRef.current.targetYaw;
     // Planet: orbit to face that spot
@@ -662,7 +669,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
     // Terrain wireframe overlay
     const terrainWireGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, 80, 80);
     terrainWireGeo.rotateX(-Math.PI / 2);
-    const terrainWireMat = new THREE.MeshBasicMaterial({ color: 0xd4a574, wireframe: true, transparent: true, opacity: 0.025 });
+    const terrainWireMat = new THREE.MeshBasicMaterial({ color: 0xd4a574, wireframe: true, transparent: true, opacity: 0.08 });
     const terrainWireMesh = new THREE.Mesh(terrainWireGeo, terrainWireMat);
     terrainWireMesh.position.y = 0.02; scene.add(terrainWireMesh);
 
@@ -695,7 +702,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
     scene.add(planet);
 
     const wireGeo = new THREE.SphereGeometry(2.805, 48, 48);
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0xd4a574, wireframe: true, transparent: true, opacity: 0.012 });
+    const wireMat = new THREE.MeshBasicMaterial({ color: 0xd4a574, wireframe: true, transparent: true, opacity: 0.05 });
     const wireMesh = new THREE.Mesh(wireGeo, wireMat);
     scene.add(wireMesh);
 
@@ -1211,7 +1218,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
           const ud = hits[0].object.userData;
           if (ud.isThoughtStar) {
             onMarkerClick({ type: "star", clusterLabel: ud.clusterLabel, thoughtId: ud.thoughtId });
-            sound.play("starClick");
+            sound.play("miniDiamondClick");
           } else {
             onMarkerClick({ type: "diamond", clusterLabel: ud.clusterLabel });
             sound.play("diamondClick");
@@ -1275,7 +1282,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
           const ud = hits[0].object.userData;
           if (ud.isThoughtStar) {
             onMarkerClick({ type: "star", clusterLabel: ud.clusterLabel, thoughtId: ud.thoughtId });
-            sound.play("starClick");
+            sound.play("miniDiamondClick");
           } else {
             onMarkerClick({ type: "diamond", clusterLabel: ud.clusterLabel });
             sound.play("diamondClick");
@@ -1502,11 +1509,29 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         for (let i = 0; i < sPos.count; i++) {
           const ox = sPos.getX(i), oy = sPos.getY(i), oz = sPos.getZ(i);
           const dir = new THREE.Vector3(ox, oy, oz).normalize();
-          let displacement = fbm3D(dir.x * 2.2 + t * 0.03, dir.y * 2.2, dir.z * 2.2 + t * 0.02, 4) * 0.02;
+          // Multi-octave displacement: broad continental shapes + fine ridges + micro detail
+          let displacement = fbm3D(dir.x * 2.2 + t * 0.03, dir.y * 2.2, dir.z * 2.2 + t * 0.02, 6) * 0.025;
+          // Tectonic ridges — sharp folds that create mountain ranges
+          const ridge = Math.abs(fbm3D(dir.x * 5.5, dir.y * 5.5, dir.z * 5.5, 3));
+          displacement += (1 - ridge) * 0.008;
+          // Micro erosion texture — fine grain detail visible up close
+          displacement += fbm3D(dir.x * 12 + t * 0.01, dir.y * 12, dir.z * 12, 2) * 0.004;
 
-          let cr = 0.35, cg = 0.28, cb = 0.22;
-          const nv = (displacement + 0.06) / 0.12;
-          cr += nv * 0.06; cg += nv * 0.05; cb += nv * 0.03;
+          // Richer base colors — continental shelves, ocean beds, highlands
+          const elevNorm = (displacement + 0.04) / 0.08;
+          let cr, cg, cb;
+          if (elevNorm > 0.7) {
+            // Highland peaks — warm amber/ochre
+            cr = 0.52 + elevNorm * 0.08; cg = 0.38 + elevNorm * 0.04; cb = 0.26;
+          } else if (elevNorm > 0.4) {
+            // Mid terrain — earthy brown
+            cr = 0.38 + elevNorm * 0.06; cg = 0.30 + elevNorm * 0.05; cb = 0.24;
+          } else {
+            // Low basins — cooler, deeper tones
+            cr = 0.28 + elevNorm * 0.04; cg = 0.25 + elevNorm * 0.06; cb = 0.24 + elevNorm * 0.03;
+          }
+          // Subtle variation from ridge presence
+          cr += (1 - ridge) * 0.04; cg += (1 - ridge) * 0.02;
 
           for (const cluster of clusterData) {
             const dot = dir.dot(cluster.direction);
@@ -1582,36 +1607,36 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         const baseScale = m.userData.baseScale || 0.05;
 
         if (m.userData.isThoughtStar) {
-          // ── Check if this star's cluster is currently transforming into a diamond ──
+          // ── Check if this mini-diamond's cluster is currently transforming ──
           const isTransforming = coalescingRef.current.includes(m.userData.clusterLabel);
 
           if (isTransforming && mode === "surface") {
             // Converge toward cluster center with accelerating spiral
-            const convergeFactor = Math.min((t % 1.5) / 1.5, 1); // 0 → 1 over 1.5 seconds
-            const eased = convergeFactor * convergeFactor; // ease-in for acceleration
-            const orbitR = m.userData.spreadDist * 0.6 * (1 - eased * 0.85); // shrink orbit
-            const spinSpeed = 2.0 + eased * 6.0; // spin faster as converging
+            const convergeFactor = Math.min((t % 1.5) / 1.5, 1);
+            const eased = convergeFactor * convergeFactor;
+            const orbitR = m.userData.spreadDist * 0.6 * (1 - eased * 0.85);
+            const spinSpeed = 2.0 + eased * 6.0;
             const orbitAngle = t * spinSpeed + m.userData.offsetAngle;
             m.userData.worldX = m.userData.clusterX + Math.cos(orbitAngle) * orbitR;
             m.userData.worldZ = m.userData.clusterZ + Math.sin(orbitAngle) * orbitR;
-            m.position.y = 0.8 + (1 - eased) * 1.5; // rise then converge down
+            m.position.y = 1.2 + (1 - eased) * 1.5;
             // Brighten during transformation
             const brightScale = baseScale * (1.5 + eased * 1.5);
-            m.scale.setScalar(brightScale);
+            m.scale.set(brightScale, brightScale * 1.35, 1);
             if (m.material) m.material.opacity = 1.0 - eased * 0.3;
           } else if (m.userData.isAggregated && mode === "surface") {
-            // Aggregated: orbit the diamond center with gentle spiraling
+            // Aggregated: orbit the big diamond center with gentle spiraling
             const orbitSpeed = 0.4 + (m.userData.seed % 1) * 0.3;
             const orbitAngle = t * orbitSpeed + m.userData.offsetAngle;
             const orbitR = m.userData.spreadDist * 0.6;
             m.userData.worldX = m.userData.clusterX + Math.cos(orbitAngle) * orbitR;
             m.userData.worldZ = m.userData.clusterZ + Math.sin(orbitAngle) * orbitR;
-            m.position.y = 0.8 + Math.sin(t * 1.2 + m.userData.seed) * 0.12;
+            m.position.y = 1.0 + Math.sin(t * 1.2 + m.userData.seed) * 0.12;
           }
-          // Twinkle animation — faster and more sparkly than diamonds
+          // Twinkle animation — mini-diamond gentle pulse with gem proportions
           if (!isTransforming) {
-            const twinkle = baseScale * (1 + Math.sin(t * 4.0 + m.userData.seed * 3.7) * 0.3);
-            m.scale.setScalar(twinkle);
+            const twinkle = baseScale * (1 + Math.sin(t * 3.5 + m.userData.seed * 3.7) * 0.2);
+            m.scale.set(twinkle, twinkle * 1.35, 1);
           }
         } else if (m.userData.isDiamond) {
           // ── Diamond formation animation ──
@@ -1729,12 +1754,11 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         // Only apply particle opacity in surface mode (already hidden in planet mode by line above)
         if (mode === "surface") {
           particles.material.opacity = 0.5 * (ss.ambientParticles ?? 1);
-          terrainWireMesh.material.opacity = 0.025 * (ss.terrainWireframe ?? 1);
+          terrainWireMesh.material.opacity = 0.08 * (ss.terrainWireframe ?? 1);
         }
-        // CRITICAL: atmosphere mesh must respect mode — only show in planet mode
-        // Without this guard, the atmos sphere (radius 2.95 at origin) appears as a
-        // giant bubble sitting on the terrain in surface mode
+        // Planet wireframe also responds to setting
         if (mode === "planet") {
+          wireMesh.material.opacity = 0.05 * (ss.terrainWireframe ?? 1);
           atmosMesh.visible = (ss.atmosphereGlow ?? 1) > 0.01;
         }
         // atmosMesh stays hidden in surface mode (set on line 1311)
@@ -1793,37 +1817,43 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       const hex = c.colorData.hex;
       const cx = 32, cy = 48; // center of diamond
 
-      // Outer glow bloom — large soft halo
-      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 40);
-      grad.addColorStop(0, hex + "ff");
-      grad.addColorStop(0.15, hex + "aa");
-      grad.addColorStop(0.4, hex + "44");
-      grad.addColorStop(0.7, hex + "11");
+      // Outer glow bloom — emotion-colored halo around a WHITE diamond
+      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 40);
+      grad.addColorStop(0, hex + "66");
+      grad.addColorStop(0.12, hex + "44");
+      grad.addColorStop(0.35, hex + "22");
+      grad.addColorStop(0.6, hex + "0c");
       grad.addColorStop(1, "transparent");
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, 64, 96);
 
-      // Diamond shape — tall, narrow, gem-like (top point taller than bottom)
+      // Diamond shape — tall, narrow, gem-like — WHITE body with emotion glow
       const topY = 10, midY = cy, botY = 82;
       const halfW = 16; // half-width at widest point
       ctx.save();
-      ctx.shadowColor = hex; ctx.shadowBlur = 16;
+      ctx.shadowColor = hex; ctx.shadowBlur = 18;
       ctx.beginPath();
       ctx.moveTo(cx, topY);       // top point
       ctx.lineTo(cx + halfW, midY); // right
       ctx.lineTo(cx, botY);       // bottom point
       ctx.lineTo(cx - halfW, midY); // left
       ctx.closePath();
-      ctx.fillStyle = hex; ctx.fill();
-      // Second pass brighter
-      ctx.shadowBlur = 8;
-      ctx.globalAlpha = 0.6; ctx.fill();
+      // White diamond fill with subtle emotion tint
+      const gemGrad = ctx.createLinearGradient(cx, topY, cx, botY);
+      gemGrad.addColorStop(0, "#ffffff");
+      gemGrad.addColorStop(0.35, "#f0eff5");
+      gemGrad.addColorStop(0.65, "#e8e6ef");
+      gemGrad.addColorStop(1, "#dddbe6");
+      ctx.fillStyle = gemGrad; ctx.fill();
+      // Second pass with emotion glow bleed
+      ctx.shadowBlur = 12;
+      ctx.globalAlpha = 0.15; ctx.fillStyle = hex; ctx.fill();
       ctx.restore();
 
       // Facet lines — gives the gem its cut appearance
       ctx.save();
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = "#ffffff";
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = "#b8b4c8";
       ctx.lineWidth = 0.8;
       // Top facet
       ctx.beginPath(); ctx.moveTo(cx - halfW, midY); ctx.lineTo(cx, topY + 18); ctx.lineTo(cx + halfW, midY); ctx.stroke();
@@ -1831,21 +1861,51 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       ctx.beginPath(); ctx.moveTo(cx - halfW + 2, midY); ctx.lineTo(cx + halfW - 2, midY); ctx.stroke();
       ctx.restore();
 
-      // White edge highlight
+      // Crisp white edge highlight — keeps the diamond sharp
       ctx.beginPath();
       ctx.moveTo(cx, topY); ctx.lineTo(cx + halfW, midY); ctx.lineTo(cx, botY); ctx.lineTo(cx - halfW, midY);
       ctx.closePath();
-      ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 1.2; ctx.stroke();
 
-      // Bright white inner core
-      ctx.beginPath(); ctx.arc(cx, midY - 4, 3.5, 0, Math.PI * 2);
+      // Bright white inner sparkle
+      ctx.beginPath(); ctx.arc(cx, midY - 4, 3, 0, Math.PI * 2);
       ctx.fillStyle = "#fff"; ctx.globalAlpha = 0.95; ctx.fill();
+      // Secondary sparkle lower
+      ctx.beginPath(); ctx.arc(cx + 2, midY + 6, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.globalAlpha = 0.6; ctx.fill();
 
-      // Extra glow ring for big clusters
-      if (c.frequency >= 6) {
-        ctx.globalAlpha = 0.4;
-        ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2);
-        ctx.strokeStyle = hex; ctx.lineWidth = 1.5; ctx.stroke();
+      // ── Crater / Flare type indicator ──
+      // Detached from diamond body so it doesnt blur the gem silhouette at distance
+      const trend = c.trend || (c.craterScale > 0 ? "stress" : c.flareScale > 0 ? "resolved" : "neutral");
+      ctx.globalAlpha = 1;
+      if (trend === "stress") {
+        // Crater: subtle downward wisps — thin lines below diamond, not arcs around it
+        const ringAlpha = Math.min(0.1 + c.frequency * 0.03, 0.35);
+        ctx.globalAlpha = ringAlpha;
+        ctx.strokeStyle = hex;
+        ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(cx, botY + 4, 14, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke();
+        ctx.globalAlpha = ringAlpha * 0.4;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(cx, botY + 6, 10, Math.PI * 0.3, Math.PI * 0.7); ctx.stroke();
+      } else if (trend === "resolved") {
+        // Flare: subtle upward wisps — thin lines above diamond
+        const ringAlpha = Math.min(0.1 + c.frequency * 0.03, 0.35);
+        ctx.globalAlpha = ringAlpha;
+        ctx.strokeStyle = hex;
+        ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(cx, topY - 4, 14, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke();
+        ctx.globalAlpha = ringAlpha * 0.4;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(cx, topY - 6, 10, Math.PI * 1.3, Math.PI * 1.7); ctx.stroke();
+      } else {
+        // Neutral: very faint full ring, pushed outward
+        if (c.frequency >= 5) {
+          ctx.globalAlpha = 0.15;
+          ctx.strokeStyle = hex;
+          ctx.lineWidth = 0.6;
+          ctx.beginPath(); ctx.arc(cx, cy, 24, 0, Math.PI * 2); ctx.stroke();
+        }
       }
       ctx.globalAlpha = 1;
       const texture = new THREE.CanvasTexture(canvas);
@@ -1894,7 +1954,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       }
     });
 
-    // ═══ THOUGHT STARS — one tiny star per individual entry ═══
+    // ═══ MINI-DIAMONDS — one tiny diamond per individual thought entry ═══
     const goldenAngle = 2.399963; // radians — golden ratio angle for even spiral distribution
     const TERRAIN_SZ = TERRAIN_SIZE;
 
@@ -1902,11 +1962,11 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       const primaryKw = normalizeKeyword((entry.keywords && entry.keywords[0]) || "thought");
       const { phi, theta } = hashToAngle(primaryKw);
 
-      // Check if this star belongs to an aggregated cluster
+      // Check if this thought belongs to an aggregated cluster (diamond already exists)
       const cluster = clusterData.find(c => c.label === primaryKw);
       const isAggregated = cluster && cluster.frequency >= 3;
 
-      // Position offset — golden angle spiral so stars don't overlap
+      // Position offset — golden angle spiral so mini-diamonds don't overlap
       const offsetAngle = entryIdx * goldenAngle;
       const spreadDist = isAggregated ? (1.5 + (entryIdx % 5) * 0.5) : (2.5 + (entryIdx % 8) * 0.8);
 
@@ -1916,39 +1976,74 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       const starX = baseX + Math.cos(offsetAngle) * spreadDist;
       const starZ = baseZ + Math.sin(offsetAngle) * spreadDist;
 
-      // Create tiny star texture
+      // ── Create mini-diamond texture — same gem shape as big diamonds, just smaller ──
       const ec = getEmotionColor(entry.emotion);
-      const starCanvas = document.createElement("canvas");
-      starCanvas.width = 32; starCanvas.height = 32;
-      const sctx = starCanvas.getContext("2d");
+      const miniCanvas = document.createElement("canvas");
+      miniCanvas.width = 48; miniCanvas.height = 64; // proportional to big diamond (64x96)
+      const mctx = miniCanvas.getContext("2d");
+      const mcx = 24, mcy = 32; // center
 
-      // Glowing point — white core fading to emotion color
-      const sGrad = sctx.createRadialGradient(16, 16, 0, 16, 16, 14);
-      sGrad.addColorStop(0, "#ffffffff");
-      sGrad.addColorStop(0.15, "#ffffffdd");
-      sGrad.addColorStop(0.3, ec.hex + "cc");
-      sGrad.addColorStop(0.55, ec.hex + "66");
-      sGrad.addColorStop(0.8, ec.hex + "22");
-      sGrad.addColorStop(1, ec.hex + "00");
-      sctx.fillStyle = sGrad;
-      sctx.beginPath();
-      sctx.arc(16, 16, 14, 0, Math.PI * 2);
-      sctx.fill();
+      // Soft emotion-colored glow halo (subtle, not dominant)
+      const mGrad = mctx.createRadialGradient(mcx, mcy, 2, mcx, mcy, 28);
+      mGrad.addColorStop(0, ec.hex + "55");
+      mGrad.addColorStop(0.2, ec.hex + "33");
+      mGrad.addColorStop(0.45, ec.hex + "18");
+      mGrad.addColorStop(0.75, ec.hex + "06");
+      mGrad.addColorStop(1, "transparent");
+      mctx.fillStyle = mGrad;
+      mctx.fillRect(0, 0, 48, 64);
 
-      // Cross flare for sparkle
-      sctx.strokeStyle = "#ffffff55";
-      sctx.lineWidth = 0.8;
-      sctx.beginPath(); sctx.moveTo(16, 3); sctx.lineTo(16, 29); sctx.stroke();
-      sctx.beginPath(); sctx.moveTo(3, 16); sctx.lineTo(29, 16); sctx.stroke();
+      // Diamond shape — WHITE body with emotion shadow glow
+      const mTopY = 8, mMidY = mcy, mBotY = 56;
+      const mHalfW = 11;
+      mctx.save();
+      mctx.shadowColor = ec.hex; mctx.shadowBlur = 12;
+      mctx.beginPath();
+      mctx.moveTo(mcx, mTopY);
+      mctx.lineTo(mcx + mHalfW, mMidY);
+      mctx.lineTo(mcx, mBotY);
+      mctx.lineTo(mcx - mHalfW, mMidY);
+      mctx.closePath();
+      // White gem fill with subtle gradient
+      const miniGemGrad = mctx.createLinearGradient(mcx, mTopY, mcx, mBotY);
+      miniGemGrad.addColorStop(0, "#ffffff");
+      miniGemGrad.addColorStop(0.4, "#f0eff5");
+      miniGemGrad.addColorStop(1, "#dddbe6");
+      mctx.fillStyle = miniGemGrad; mctx.fill();
+      // Faint emotion tint overlay
+      mctx.shadowBlur = 6;
+      mctx.globalAlpha = 0.12; mctx.fillStyle = ec.hex; mctx.fill();
+      mctx.restore();
 
-      const starTex = new THREE.CanvasTexture(starCanvas);
+      // Facet line
+      mctx.save();
+      mctx.globalAlpha = 0.3;
+      mctx.strokeStyle = "#b8b4c8";
+      mctx.lineWidth = 0.6;
+      mctx.beginPath(); mctx.moveTo(mcx - mHalfW, mMidY); mctx.lineTo(mcx, mTopY + 12); mctx.lineTo(mcx + mHalfW, mMidY); mctx.stroke();
+      mctx.beginPath(); mctx.moveTo(mcx - mHalfW + 1, mMidY); mctx.lineTo(mcx + mHalfW - 1, mMidY); mctx.stroke();
+      mctx.restore();
 
-      // ── Surface thought star ──
-      const sMat = new THREE.SpriteMaterial({ map: starTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.75 : 0.9, blending: THREE.AdditiveBlending });
+      // Crisp white edge highlight
+      mctx.beginPath();
+      mctx.moveTo(mcx, mTopY); mctx.lineTo(mcx + mHalfW, mMidY); mctx.lineTo(mcx, mBotY); mctx.lineTo(mcx - mHalfW, mMidY);
+      mctx.closePath();
+      mctx.strokeStyle = "rgba(255,255,255,0.7)"; mctx.lineWidth = 0.9; mctx.stroke();
+
+      // White core sparkle
+      mctx.beginPath(); mctx.arc(mcx, mMidY - 2, 1.8, 0, Math.PI * 2);
+      mctx.fillStyle = "#fff"; mctx.globalAlpha = 0.9; mctx.fill();
+      mctx.globalAlpha = 1;
+
+      const miniTex = new THREE.CanvasTexture(miniCanvas);
+      miniTex.premultiplyAlpha = true;
+
+      // ── Surface mini-diamond ──
+      const sMat = new THREE.SpriteMaterial({ map: miniTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.7 : 0.95, blending: THREE.AdditiveBlending });
       const sStar = new THREE.Sprite(sMat);
-      sStar.position.set(starX, 0.6 + Math.random() * 0.5, starZ);
-      const sBase = isAggregated ? 0.15 : 0.28;
-      sStar.scale.setScalar(sBase);
+      sStar.position.set(starX, 1.8 + Math.random() * 0.4, starZ);
+      const sBase = isAggregated ? 0.18 : 0.35;
+      sStar.scale.set(sBase, sBase * 1.35, 1); // match diamond proportions
       sStar.userData = {
         clusterLabel: primaryKw, seed: entryIdx * 2.3 + 0.5, baseScale: sBase,
         worldX: starX, worldZ: starZ, isThoughtStar: true, isAggregated,
@@ -1959,9 +2054,8 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       markersRef.current.push(sStar);
       thoughtStarsRef.current.push(sStar);
 
-      // ── Planet thought star ──
+      // ── Planet mini-diamond ──
       const sphereDir = keywordToSpherePos(primaryKw, 1).normalize();
-      // Offset on sphere surface using tangent/bitangent
       const tangent = new THREE.Vector3(-sphereDir.z, 0, sphereDir.x).normalize();
       const bitangent = new THREE.Vector3().crossVectors(sphereDir, tangent).normalize();
       const pSpreadDist = isAggregated ? 0.02 + (entryIdx % 5) * 0.008 : 0.04 + (entryIdx % 8) * 0.01;
@@ -1970,11 +2064,11 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         .addScaledVector(bitangent, Math.sin(offsetAngle) * pSpreadDist)
         .normalize();
 
-      const pMat = new THREE.SpriteMaterial({ map: starTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.7 : 0.85, blending: THREE.AdditiveBlending });
+      const pMat = new THREE.SpriteMaterial({ map: miniTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.65 : 0.9, blending: THREE.AdditiveBlending });
       const pStar = new THREE.Sprite(pMat);
       pStar.position.copy(pDir.clone().multiplyScalar(2.82));
-      const pBase = isAggregated ? 0.015 : 0.025;
-      pStar.scale.setScalar(pBase);
+      const pBase = isAggregated ? 0.018 : 0.032;
+      pStar.scale.set(pBase, pBase * 1.35, 1);
       pStar.userData = {
         clusterLabel: primaryKw, seed: entryIdx * 2.3 + 0.5, baseScale: pBase,
         isThoughtStar: true, isAggregated, thoughtId: entry.id,
@@ -2298,16 +2392,17 @@ function HotkeyPanel({ isOpen, onToggle, viewMode }) {
   return (
     <>
       <button onClick={onToggle} onMouseEnter={() => sound.play("hover")} style={{
-        position: "absolute", bottom: 18, right: 18, width: 40, height: 40, borderRadius: 12,
+        position: "absolute", bottom: 18, right: 18, zIndex: 30,
         background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
-        border: `1px solid ${isOpen ? COLORS.amber + "55" : COLORS.surfaceLight}`,
-        color: isOpen ? COLORS.amber : COLORS.textSecondary, cursor: "pointer", display: "flex", alignItems: "center",
-        justifyContent: "center", fontSize: 15, fontWeight: 400, zIndex: 30, backdropFilter: "blur(12px)",
-        fontFamily: "'JetBrains Mono', monospace",
-        boxShadow: isOpen ? `0 0 16px ${COLORS.amber}22` : `0 2px 8px rgba(0,0,0,0.3)`,
+        border: `1px solid ${isOpen ? COLORS.amber + "44" : COLORS.surfaceLight}`,
+        borderRadius: 12, padding: "7px 14px", cursor: "pointer",
+        backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: 6,
         transition: "all 0.3s ease",
+        boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
       }}>
-        ?
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.12em", color: isOpen ? COLORS.amber : COLORS.textSecondary }}>
+          ? KEYS
+        </span>
       </button>
       <div data-panel="true" style={{
         position: "absolute", bottom: 60, right: 18, width: 220,
@@ -2363,17 +2458,17 @@ function SceneSettingsPanel({ isOpen, onToggle, settings, onChange }) {
       <button onClick={() => { onToggle(); sound.play("hover"); }}
         onMouseEnter={() => sound.play("hover")}
         style={{
-          position: "absolute", bottom: 18, left: 18, zIndex: 30, width: 40, height: 40,
-          borderRadius: 12, border: `1px solid ${isOpen ? COLORS.amber + "55" : COLORS.surfaceLight}`,
-          background: `linear-gradient(135deg, ${isOpen ? COLORS.surface + "ee" : COLORS.surface + "cc"}, ${COLORS.surfaceMid}88)`,
-          backdropFilter: "blur(12px)", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontFamily: "'JetBrains Mono', monospace", fontSize: 17,
-          color: isOpen ? COLORS.amber : COLORS.textSecondary,
-          boxShadow: isOpen ? `0 0 16px ${COLORS.amber}22` : `0 2px 8px rgba(0,0,0,0.3)`,
+          position: "absolute", bottom: 18, left: 18, zIndex: 30,
+          background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+          border: `1px solid ${isOpen ? COLORS.amber + "44" : COLORS.surfaceLight}`,
+          borderRadius: 12, padding: "7px 14px", cursor: "pointer",
+          backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: 6,
           transition: "all 0.3s ease",
+          boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
         }}>
-        {"\u2699"}
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.12em", color: isOpen ? COLORS.amber : COLORS.textSecondary }}>
+          {"\u2699"} SCENE
+        </span>
       </button>
       <div data-panel="true" style={{
         position: "absolute", bottom: 62, left: 18, width: 240,
@@ -2705,9 +2800,27 @@ export default function Coil() {
               background: `linear-gradient(to right, transparent, ${ec.hex}88, transparent)`,
               animation: "birthRay 2s ease-out forwards",
             }} />
+            {/* Mini-diamond icon — the gem that just landed */}
+            <div style={{
+              position: "absolute", top: "calc(50% - 28px)", left: "50%",
+              width: 12, height: 16,
+              animation: "birthFade 2.8s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+            }}>
+              <svg viewBox="0 0 12 16" style={{ width: "100%", height: "100%", filter: `drop-shadow(0 0 10px ${ec.hex})` }}>
+                <defs>
+                  <linearGradient id="birthGemGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ffffff" />
+                    <stop offset="40%" stopColor="#f0eff5" />
+                    <stop offset="100%" stopColor="#dddbe6" />
+                  </linearGradient>
+                </defs>
+                <path d={`M6,1 L11,8 L6,15 L1,8 Z`} fill="url(#birthGemGrad)" stroke="rgba(255,255,255,0.8)" strokeWidth="0.5" />
+                <path d={`M1,8 L6,5 L11,8`} fill="none" stroke="rgba(184,180,200,0.35)" strokeWidth="0.4" />
+              </svg>
+            </div>
             {/* Thought label */}
             <div style={{
-              position: "absolute", top: "50%", left: "50%", whiteSpace: "nowrap",
+              position: "absolute", top: "calc(50% + 2px)", left: "50%", whiteSpace: "nowrap",
               fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 300,
               color: ec.hex, letterSpacing: "0.08em",
               textShadow: `0 0 24px ${ec.hex}cc, 0 0 48px ${ec.hex}66, 0 0 80px ${ec.hex}33`,
@@ -2717,7 +2830,7 @@ export default function Coil() {
             </div>
             {/* Emotion subtag */}
             <div style={{
-              position: "absolute", top: "calc(50% + 32px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
+              position: "absolute", top: "calc(50% + 34px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
               fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: "0.2em",
               color: COLORS.textSecondary,
               animation: "birthFade 2.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards",
@@ -2780,23 +2893,7 @@ export default function Coil() {
         }}>
           WHAT'S LOOPING?
         </div>
-        <div style={{ position: "relative", borderRadius: 16 }}>
-          {/* Outer glow border */}
-          <div style={{
-            position: "absolute", inset: -1, borderRadius: 17, pointerEvents: "none", zIndex: 2,
-            border: `1px solid ${inputFocused ? COLORS.amber + "55" : COLORS.surfaceLight + "88"}`,
-            boxShadow: inputFocused
-              ? `0 0 32px ${COLORS.glowAmber}, inset 0 0 20px ${COLORS.amber}08`
-              : `0 4px 20px rgba(0,0,0,0.3)`,
-            transition: "all 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
-            animation: !flash && !inputFocused ? "breathe 5s ease-in-out infinite" : "none",
-          }} />
-          {/* Inner subtle gradient line at top */}
-          <div style={{
-            position: "absolute", top: 0, left: 20, right: 20, height: 1, zIndex: 3,
-            background: `linear-gradient(90deg, transparent, ${inputFocused ? COLORS.amber + "44" : COLORS.surfaceLight + "33"}, transparent)`,
-            borderRadius: 1, transition: "all 0.5s ease",
-          }} />
+        <div style={{ position: "relative", borderRadius: 12 }}>
           <textarea value={inputText} onChange={e => setInputText(e.target.value)}
             onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
@@ -2804,27 +2901,30 @@ export default function Coil() {
             rows={2}
             style={{
               width: "100%",
-              background: `linear-gradient(180deg, ${COLORS.surface}ee 0%, ${COLORS.bg}dd 100%)`,
-              backdropFilter: "blur(24px)",
-              border: "none", borderRadius: 16, padding: "18px 56px 18px 20px",
+              background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+              border: `1px solid ${inputFocused ? COLORS.amber + "44" : COLORS.surfaceLight}`,
+              borderRadius: 12, padding: "14px 50px 14px 18px",
               color: COLORS.textPrimary, fontFamily: "'DM Sans', system-ui", fontSize: 14,
               lineHeight: 1.7, resize: "none", outline: "none", boxSizing: "border-box",
               letterSpacing: "0.01em",
+              boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
+              transition: "all 0.3s ease",
             }} />
           <button onClick={handleSubmit} onMouseEnter={() => inputText.trim() && sound.play("hover")}
             style={{
-              position: "absolute", right: 14, bottom: 14, width: 36, height: 36, borderRadius: 12,
-              border: inputText.trim() ? `1px solid ${COLORS.amber}44` : `1px solid ${COLORS.surfaceLight}`,
+              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+              width: 30, height: 30, borderRadius: "50%",
+              border: "none",
               cursor: inputText.trim() ? "pointer" : "default",
               background: inputText.trim()
                 ? `linear-gradient(135deg, ${COLORS.amber}, ${COLORS.amberDim})`
-                : `linear-gradient(135deg, ${COLORS.surfaceLight}, ${COLORS.surface})`,
+                : "transparent",
               color: inputText.trim() ? COLORS.bg : COLORS.textMuted,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 15, fontWeight: 500,
-              transition: "all 0.3s cubic-bezier(0.22, 1, 0.36, 1)", zIndex: 3,
-              boxShadow: inputText.trim() ? `0 4px 16px ${COLORS.amber}33, 0 0 8px ${COLORS.amber}22` : `0 2px 6px rgba(0,0,0,0.2)`,
-              transform: inputText.trim() ? "scale(1)" : "scale(0.95)",
+              fontSize: 14, fontWeight: 500,
+              transition: "all 0.3s ease", zIndex: 3,
+              boxShadow: inputText.trim() ? `0 0 12px ${COLORS.amber}33` : "none",
+              opacity: inputText.trim() ? 1 : 0.4,
             }}>{"\u2191"}</button>
         </div>
       </div>
@@ -2834,7 +2934,6 @@ export default function Coil() {
       </div>
 
       <style>{`
-        @keyframes breathe { 0%,100%{border-color:${COLORS.surfaceLight};box-shadow:none} 50%{border-color:${COLORS.amber}22;box-shadow:0 0 18px ${COLORS.glowAmber}} }
         @keyframes fadeUp { from{opacity:0;transform:translateX(-50%) translateY(20px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
         @keyframes fadeDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes flashOut { 0%{opacity:0.5} 100%{opacity:0} }

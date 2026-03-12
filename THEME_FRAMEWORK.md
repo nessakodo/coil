@@ -60,7 +60,7 @@ Terrain and planet mesh use `emissive` for self-illumination, reducing dependenc
 
 ### Material Strategy
 - **Terrain/Planet**: MeshStandardMaterial with vertexColors, flatShading, emissive (0x2a2018 / 0x201810)
-- **Wireframe overlay**: MeshBasicMaterial, wireframe, very low opacity (0.012-0.025)
+- **Wireframe overlay**: MeshBasicMaterial, wireframe, visible opacity (surface: 0.08, planet: 0.05) — responds to scene settings slider
 - **Markers**: SpriteMaterial with AdditiveBlending (critical for dark scene)
 - **Space elements**: AdditiveBlending throughout for glow-on-black rendering
 - **Atmosphere**: ShaderMaterial with Fresnel rim calculation
@@ -69,37 +69,40 @@ Terrain and planet mesh use `emissive` for self-illumination, reducing dependenc
 
 ## Thought Representation
 
-### Individual Thoughts (Stars)
-Each submitted thought becomes a persistent, clickable sprite that stays in the terrain:
-- Canvas: 16x16 pixels
-- Visual: White core fading to emotion color radial gradient + cross flare
-- SpriteMaterial with AdditiveBlending (critical for dark scene rendering)
-- Surface scale: 0.12 (aggregated) / 0.18 (standalone), elevated 0.6-1.1 units above terrain
-- Planet scale: 0.012 (aggregated) / 0.018 (standalone)
-- Animation: Twinkle at 4.0 Hz + seed variation, amplitude 0.3x base
+### Visual Hierarchy: Mini-Diamonds → Diamonds
 
-**Click behavior**: Clicking a star opens a ThoughtPopup showing the raw thought text, emotion tag, timestamp, and an aggregation progress bar (X/3 toward diamond). If the cluster has already reached diamond threshold, a "View Diamond Cluster" button links to the full ClusterPopup. Star clicks play a `starClick` sound (crystalline ping at 1400-2200 Hz with harmonic shimmer).
+Every thought is visible as a gem on the terrain. The system uses a two-tier diamond hierarchy:
 
-**Standalone behavior**: Fixed position based on keyword hash, gentle vertical bob
+**Mini-Diamonds (individual thoughts)** — each submitted thought renders as a small, persistent, clickable diamond sprite:
+- Canvas: 48x64 pixels (same proportional shape as big diamonds)
+- Visual: WHITE faceted gem body (linear gradient #fff → #dddbe6) with subtle emotion-colored outer glow halo, facet lines in #b8b4c8, crisp white edge stroke, core sparkle
+- SpriteMaterial with AdditiveBlending + premultiplyAlpha
+- Non-uniform scale: 1:1.35 ratio (matching gem proportions)
+- Surface scale: 0.18 (aggregated, orbiting) / 0.35 (standalone), elevated 1.8+ units above terrain (floats like big diamonds)
+- Planet scale: 0.018 (aggregated) / 0.032 (standalone)
+- Animation: Gentle pulse at 3.5 Hz + seed variation, amplitude 0.2x base, maintains gem proportions
 
-**Aggregated behavior** (when parent cluster freq >= 3): Orbits the diamond center at 0.4-0.7 rad/s, orbit radius = 60% of spread distance
+**Click behavior**: Clicking a mini-diamond opens ThoughtPopup showing the raw thought text, emotion tag, timestamp, and aggregation progress bar (X/3 toward diamond). Plays `miniDiamondClick` sound (glass marble drop — sine 2400→1600 Hz through highpass + metallic ping at 4200 Hz).
 
-### Star-to-Diamond Transformation
-When a cluster crosses threshold 3, all associated thought stars play a convergence animation:
-1. Stars accelerate their orbit (spin speed 2.0 → 8.0 rad/s)
+**Standalone behavior**: Fixed position based on keyword hash, gentle pulse
+
+**Aggregated behavior** (parent cluster freq >= 3): Orbits the big diamond center at 0.4-0.7 rad/s, orbit radius = 60% of spread distance, elevated at 1.0 units with gentle bob
+
+### Mini-Diamond to Diamond Transformation
+When a cluster crosses threshold 3, all associated mini-diamonds play a convergence animation:
+1. Mini-diamonds accelerate their orbit (spin speed 2.0 → 8.0 rad/s)
 2. Orbit radius shrinks by 85% (converging toward center)
-3. Stars rise then descend (y: 0.8 + 1.5 → 0.8)
-4. Brightness increases 1.5x → 3x during convergence
+3. Mini-diamonds rise then descend (y: 1.2 + 1.5 → 1.2)
+4. Brightness increases 1.5x → 3x during convergence, scale maintained with gem proportions
 5. `transform` sound plays: ascending cascade (330-880 Hz) + crystallization snap
-6. After 1.5s, the diamond marker appears with its formation animation
-- The transformation uses ease-in acceleration for a natural gravity-pull feel
+6. After 1.5s, the big diamond marker appears with its formation animation
+- Uses ease-in acceleration for a natural gravity-pull feel
 
-### Aggregated Themes (Diamonds)
-When a keyword reaches frequency 3+, thought stars coalesce into a diamond marker:
+### Aggregated Clusters (Big Diamonds)
+When a keyword reaches frequency 3+, mini-diamonds coalesce into a large diamond marker:
 - Canvas: 64x96 pixels (taller canvas for elongated gem shape)
-- Visual: Tall faceted gem with emotion-colored fill, facet cut lines, white edge highlights, bright inner core
-- Glow halo: radial gradient bloom around gem, higher opacity than stars
-- Extra glow ring at freq 6+
+- Visual: Tall WHITE faceted gem body (linear gradient #fff → #dddbe6) with 15% emotion-color overlay bleed, facet cut lines in #b8b4c8, crisp white edge stroke (0.8 opacity), dual sparkle points (upper + lower)
+- Glow halo: emotion-colored radial gradient bloom at reduced intensity (max 40% alpha at center), creating a colored aura around the white gem
 - SpriteMaterial with AdditiveBlending + premultiplyAlpha
 - Non-uniform scale: width x height ratio 1:1.4 for authentic gem silhouette
 - Formation animation: 2-second easeInOutCubic scale-up from 0
@@ -108,7 +111,13 @@ When a keyword reaches frequency 3+, thought stars coalesce into a diamond marke
 - Surface scale: 0.55 + min(freq * 0.06, 0.4)
 - Planet scale: 0.06 + min(freq * 0.007, 0.05)
 
-**Click behavior**: Diamond clicks play a `diamondClick` sound (triangle wave triad C-E-G with low sub at 220 Hz) and open ClusterPopup showing all thoughts in the cluster.
+**Crater/Flare Type Indicators**: Each big diamond has detached, subtle arc wisps that signal terrain type without blurring the gem silhouette:
+- **Crater (stress)**: Two thin arcs positioned BELOW the diamond body (botY + 4/6), radius 14/10px, alpha 0.1 + freq*0.03 (max 0.35). Suggests depth/sinking.
+- **Flare (resolved)**: Two thin arcs positioned ABOVE the diamond body (topY - 4/6), radius 14/10px, same alpha. Suggests rising energy.
+- **Neutral**: Full ring at freq 5+ pushed outward (radius 24px, alpha 0.15, lineWidth 0.6)
+- All indicators use emotion color but are spatially separated from the gem body so the diamond reads as a clean sharp shape from any distance
+
+**Click behavior**: Diamond clicks play a `diamondClick` sound (cathedral bell — triangle fundamental C4 at 262 Hz + 4 harmonic overtones with long 1.2s decay, sub rumble at 82 Hz through lowpass) and open ClusterPopup showing all thoughts in the cluster.
 
 ### Birth Animation
 When a thought is submitted, a centered overlay plays:
@@ -116,8 +125,10 @@ When a thought is submitted, a centered overlay plays:
 2. **Star burst** — large (180px) bright radial gradient explosion
 3. **Inner core flash** — 24px white-to-emotion gradient
 4. **Cross flare rays** — horizontal and vertical light streaks
-5. **Text label** — keyword name in emotion color with heavy glow text-shadow
-6. **Emotion subtag** — uppercase emotion name, monospace, delayed 0.2s
+5. **Mini-diamond SVG icon** — small WHITE faceted gem (linearGradient #fff → #dddbe6) with emotion-colored drop shadow, appears above text
+6. **Text label** — keyword name in emotion color with heavy glow text-shadow
+7. **Emotion subtag** — uppercase emotion name, monospace, delayed 0.2s
+- Camera snaps to 3.5 units behind the new thought's position, facing toward it
 - Total duration: 2.8 seconds
 - All elements use CSS keyframe animations
 
@@ -142,6 +153,14 @@ Cool Resolved:
 Neutral:
   neutral:     #d4a574
 ```
+
+### Planet Terrain Detail
+The planet sphere uses multi-layer displacement for rich visual texture:
+- **Continental shapes**: fbm3D at 6 octaves (scale 2.2), amplitude 0.025 — broad rolling terrain
+- **Tectonic ridges**: absolute fbm3D at 3 octaves (scale 5.5), inverted — sharp mountain folds
+- **Micro erosion**: fbm3D at 2 octaves (scale 12), amplitude 0.004 — fine grain visible up close
+- **Color bands**: elevation-mapped (highland amber/ochre > mid earthy brown > low basin cool tones)
+- Ridge presence adds warm color variation for visual depth
 
 ### Terrain Deformation by Emotion
 Emotions map to physical terrain features via trend classification:
@@ -261,8 +280,8 @@ Web Audio API based, initialized on first user interaction:
 | impact | Thought lands (no threshold cross) | Descending sine 180→40 Hz |
 | coalesce | Additional entry to existing diamond | Rising harmonic shimmer (4 stacked sines) |
 | transform | Stars merge into new diamond (threshold 3) | Ascending cascade 330-880 Hz + crystallization snap |
-| starClick | Click on thought star sprite | Crystalline ping 1400→2200 Hz + harmonic shimmer at 2800 Hz |
-| diamondClick | Click on diamond marker | Triangle wave triad C-E-G + sub at 220 Hz |
+| miniDiamondClick | Click on mini-diamond (individual thought) | Glass marble drop: sine 2400→1600 Hz through highpass + metallic ping 4200 Hz |
+| diamondClick | Click on big diamond (aggregated cluster) | Cathedral bell: C4 fundamental + 4 harmonics, 1.2s decay + sub rumble 82 Hz |
 | hover | Button/marker hover | Quick 1200 Hz ping |
 | reveal | Mode switch / sidebar click | Descending 660→440 Hz |
 | zoom | Mode transition | Filtered sawtooth 40→120 Hz + rising sine |
@@ -294,20 +313,22 @@ glowAmber:    rgba(212,165,116,0.25)
 ```
 
 ### Input System
-- Elevated glass card with gradient background (surface → bg, top to bottom)
-- Top edge accent line: horizontal gradient that intensifies on focus
-- Breathing border animation when idle (5s ease-in-out, outer glow border)
-- Focus state: amber border glow (32px spread) + inner shadow
-- Drop shadow for depth (4px 20px black 30%)
-- Submit button: gradient fill with border glow when active, subtle scale transform
+- Textarea: borderRadius 12, gradient bg (surface ee → surfaceMid 88), no glassmorphism/blur
+- Border matches other controls: 1px surfaceLight, amber on focus
+- Submit button: floating circle (30px), positioned absolute right inside textarea
+- Active submit: amber gradient fill, visible with glow. Inactive: transparent, 0.4 opacity
+- No accent lines, no breathing animation — clean and consistent
 - Flash overlay on submit (radial gradient pulse)
 - Label: 8px JetBrains Mono, 0.25em letter-spacing, glows amber on focus
 
-### Control Icons
-- Settings gear and hotkey buttons: 40x40px, borderRadius 12px
-- Gradient background (surface → surfaceMid) with blur(12px) backdrop
-- Active state: amber border glow + 16px amber box-shadow
-- Inactive: textSecondary color, subtle 2px 8px drop shadow
+### Control Buttons (Cohesive Design Language)
+All control buttons share the exact same visual DNA as the Surface/Planet toggle:
+- **Common style**: `linear-gradient(135deg, surface ee, surfaceMid 88)`, `border-radius: 12px`, `backdrop-filter: blur(12px)`, `padding: 7px 14px`, `box-shadow: 0 2px 10px rgba(0,0,0,0.3)`, `font: JetBrains Mono 9px, letter-spacing 0.12em`
+- **Surface/Planet toggle** (top-right): `padding: 9px 16px`, amber text, shows current mode icon + label
+- **Settings button** (bottom-left): Gear icon + "SCENE" label, amber when active
+- **Hotkey button** (bottom-right): "? KEYS" label, amber when active
+- **Active state**: amber border (0.44 alpha)
+- **Inactive**: surfaceLight border, textSecondary color
 - Click-off-to-close: clicking anywhere on canvas background closes open panels
 
 ### Panels & Popups
