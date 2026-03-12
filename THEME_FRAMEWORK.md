@@ -70,29 +70,45 @@ Terrain and planet mesh use `emissive` for self-illumination, reducing dependenc
 ## Thought Representation
 
 ### Individual Thoughts (Stars)
-Each submitted thought becomes a tiny clickable sprite:
+Each submitted thought becomes a persistent, clickable sprite that stays in the terrain:
 - Canvas: 16x16 pixels
 - Visual: White core fading to emotion color radial gradient + cross flare
-- SpriteMaterial with AdditiveBlending
-- Surface scale: 0.12 (aggregated) / 0.18 (standalone)
+- SpriteMaterial with AdditiveBlending (critical for dark scene rendering)
+- Surface scale: 0.12 (aggregated) / 0.18 (standalone), elevated 0.6-1.1 units above terrain
 - Planet scale: 0.012 (aggregated) / 0.018 (standalone)
 - Animation: Twinkle at 4.0 Hz + seed variation, amplitude 0.3x base
+
+**Click behavior**: Clicking a star opens a ThoughtPopup showing the raw thought text, emotion tag, timestamp, and an aggregation progress bar (X/3 toward diamond). If the cluster has already reached diamond threshold, a "View Diamond Cluster" button links to the full ClusterPopup. Star clicks play a `starClick` sound (crystalline ping at 1400-2200 Hz with harmonic shimmer).
 
 **Standalone behavior**: Fixed position based on keyword hash, gentle vertical bob
 
 **Aggregated behavior** (when parent cluster freq >= 3): Orbits the diamond center at 0.4-0.7 rad/s, orbit radius = 60% of spread distance
 
+### Star-to-Diamond Transformation
+When a cluster crosses threshold 3, all associated thought stars play a convergence animation:
+1. Stars accelerate their orbit (spin speed 2.0 → 8.0 rad/s)
+2. Orbit radius shrinks by 85% (converging toward center)
+3. Stars rise then descend (y: 0.8 + 1.5 → 0.8)
+4. Brightness increases 1.5x → 3x during convergence
+5. `transform` sound plays: ascending cascade (330-880 Hz) + crystallization snap
+6. After 1.5s, the diamond marker appears with its formation animation
+- The transformation uses ease-in acceleration for a natural gravity-pull feel
+
 ### Aggregated Themes (Diamonds)
 When a keyword reaches frequency 3+, thought stars coalesce into a diamond marker:
-- Canvas: 64x64 pixels
-- Visual: Emotion-colored diamond shape with glow halo, white core, edge highlights
+- Canvas: 64x96 pixels (taller canvas for elongated gem shape)
+- Visual: Tall faceted gem with emotion-colored fill, facet cut lines, white edge highlights, bright inner core
+- Glow halo: radial gradient bloom around gem, higher opacity than stars
 - Extra glow ring at freq 6+
 - SpriteMaterial with AdditiveBlending + premultiplyAlpha
+- Non-uniform scale: width x height ratio 1:1.4 for authentic gem silhouette
 - Formation animation: 2-second easeInOutCubic scale-up from 0
 - Pulse: 2.5 Hz sinusoidal, amplitude 0.15x base
-- Coalesce sound triggers on threshold crossing
-- Surface scale: 0.45 + min(freq * 0.05, 0.35)
-- Planet scale: 0.05 + min(freq * 0.006, 0.05)
+- Surface elevation: 2.0+ units above terrain (scales with frequency and flare)
+- Surface scale: 0.55 + min(freq * 0.06, 0.4)
+- Planet scale: 0.06 + min(freq * 0.007, 0.05)
+
+**Click behavior**: Diamond clicks play a `diamondClick` sound (triangle wave triad C-E-G with low sub at 220 Hz) and open ClusterPopup showing all thoughts in the cluster.
 
 ### Birth Animation
 When a thought is submitted, a centered overlay plays:
@@ -180,13 +196,15 @@ All space layers use AdditiveBlending and rotate at different rates for parallax
 | Layer | Count/Config | Distance | Rotation Rate | Purpose |
 |-------|-------------|----------|---------------|---------|
 | Star Field | 8000 points | 20-350 units | 0.00008 | Galaxy backdrop |
-| Nebulae | 7 clusters, 5 shells each | 95-150 units | 0.00004 | Volumetric gas clouds |
-| Distant Suns | 3 (yellow, blue, red) | 280-350 units | 0.00002 | Bright point sources |
-| Distant Planets | 4 (gas giant, ice, rocky, moon) | 90-260 units | 0.00002 | Large bodies with atmosphere shaders |
-| Asteroid Belt | 600 particles + 8 hero meshes | 38-56 units | 0.00025 | Toroidal ring, 15-degree tilt |
+| Nebulae | 7 clusters, 5 shells each | 95-150 units, elev 50+ | 0.00004 | Volumetric gas clouds |
+| Distant Suns | 3 (yellow, blue, red) | 340-400 units, elev 100-160 | 0.00002 | Bright point sources |
+| Distant Planets | 4 (gas giant, ice, rocky, moon) | 200-350 units, elev 65-140 | 0.00002 | Large bodies with atmosphere shaders |
+| Asteroid Belt | 600 particles + 6 hero meshes | 80-120 radius, elev 40+ | 0.00025 | Toroidal ring, 15-degree tilt |
 | Cosmic Dust | 3 layers (6500 total) | 15-350 units | 0.00006 | Ultra-fine atmospheric particles |
 | Comets | 5, 14-point tails | Variable | Drift | Animated streaks |
 | Surface Particles | 800 points | Above terrain | N/A | Ambient surface glow |
+
+**CRITICAL**: All celestial bodies must be elevated well above the terrain plane (y=0) to prevent clipping in surface mode. Minimum elevations: nebulae 50+, planets 65+, suns 100+, asteroid belt 40+. The COIL atmosphere mesh (radius 2.95 at origin) must ONLY be visible in planet mode — scene settings must not override mode-based visibility.
 
 ### Star Field Distribution
 - 40% milky way band (tight strip with 23-degree tilt)
@@ -239,11 +257,14 @@ Web Audio API based, initialized on first user interaction:
 
 | Sound | Trigger | Character |
 |-------|---------|-----------|
-| submit | New thought entered | Rising major triad (C-E-G) |
-| impact | Thought lands on terrain | Descending sine 180→40 Hz |
-| coalesce | Cluster crosses threshold 3 | Rising harmonic shimmer (4 stacked sines) |
+| submit | New thought entered | Rising major triad (C-E-G), 523/659/784 Hz |
+| impact | Thought lands (no threshold cross) | Descending sine 180→40 Hz |
+| coalesce | Additional entry to existing diamond | Rising harmonic shimmer (4 stacked sines) |
+| transform | Stars merge into new diamond (threshold 3) | Ascending cascade 330-880 Hz + crystallization snap |
+| starClick | Click on thought star sprite | Crystalline ping 1400→2200 Hz + harmonic shimmer at 2800 Hz |
+| diamondClick | Click on diamond marker | Triangle wave triad C-E-G + sub at 220 Hz |
 | hover | Button/marker hover | Quick 1200 Hz ping |
-| reveal | Marker click / mode switch | Descending 660→440 Hz |
+| reveal | Mode switch / sidebar click | Descending 660→440 Hz |
 | zoom | Mode transition | Filtered sawtooth 40→120 Hz + rising sine |
 | drone | Background ambient | 55 Hz + 82.5 Hz through lowpass |
 
@@ -273,15 +294,29 @@ glowAmber:    rgba(212,165,116,0.25)
 ```
 
 ### Input System
-- Breathing border animation when idle (5s ease-in-out)
-- Glow state on focus (amber box-shadow)
+- Elevated glass card with gradient background (surface → bg, top to bottom)
+- Top edge accent line: horizontal gradient that intensifies on focus
+- Breathing border animation when idle (5s ease-in-out, outer glow border)
+- Focus state: amber border glow (32px spread) + inner shadow
+- Drop shadow for depth (4px 20px black 30%)
+- Submit button: gradient fill with border glow when active, subtle scale transform
 - Flash overlay on submit (radial gradient pulse)
+- Label: 8px JetBrains Mono, 0.25em letter-spacing, glows amber on focus
 
-### Panels
-- Sidebar: Category-grouped clusters with entry counts
-- Hotkey panel: Context-aware (surface vs planet controls)
-- Settings panel: Slider-based scene customization with presets
-- Cluster popup: Click-outside-to-close, escape key dismiss, popupIn animation
+### Control Icons
+- Settings gear and hotkey buttons: 40x40px, borderRadius 12px
+- Gradient background (surface → surfaceMid) with blur(12px) backdrop
+- Active state: amber border glow + 16px amber box-shadow
+- Inactive: textSecondary color, subtle 2px 8px drop shadow
+- Click-off-to-close: clicking anywhere on canvas background closes open panels
+
+### Panels & Popups
+- **Sidebar**: Category-grouped clusters with entry counts, expandable sections
+- **Hotkey panel**: Context-aware (surface vs planet controls)
+- **Settings panel**: 9 slider controls for scene layer visibility + 3 presets (Full/Focus/Minimal)
+- **Cluster popup (diamond click)**: Shows all thoughts in cluster, emotion/type/frequency header, click-outside-to-close, escape key dismiss, popupIn animation
+- **Thought popup (star click)**: Shows individual thought text, emotion, timestamp, aggregation progress bar (X/3 toward diamond), "View Diamond Cluster" button if threshold met
+- All popups: backdrop click dismiss, escape key priority chain (popup → thought → settings → sidebar)
 
 ---
 
