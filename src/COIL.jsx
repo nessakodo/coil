@@ -1553,17 +1553,23 @@ function ClusterPopup({ cluster, entries, onClose }) {
   const typeLabel = trend === "stress" ? "crater" : trend === "resolved" ? "flare" : "ridge";
 
   return (
-    <div style={{
-      position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-      background: `${COLORS.bg}f5`, backdropFilter: "blur(24px)",
-      border: `1px solid ${ec.hex}44`, borderRadius: 16, padding: "24px 28px",
-      maxWidth: 380, width: "90%", zIndex: 40, maxHeight: "60vh", overflowY: "auto",
-      boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 40px ${ec.hex}15`,
-    }}>
-      <button onClick={onClose} style={{
-        position: "absolute", top: 12, right: 14, background: "none", border: "none",
-        color: COLORS.textMuted, cursor: "pointer", fontSize: 18, padding: 4,
-      }}>×</button>
+    <>
+      {/* Backdrop — click outside to close */}
+      <div onClick={onClose} style={{
+        position: "absolute", inset: 0, zIndex: 39, cursor: "pointer",
+      }} />
+      <div onClick={(e) => e.stopPropagation()} style={{
+        position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+        background: `${COLORS.bg}f5`, backdropFilter: "blur(24px)",
+        border: `1px solid ${ec.hex}44`, borderRadius: 16, padding: "24px 28px",
+        maxWidth: 380, width: "90%", zIndex: 40, maxHeight: "60vh", overflowY: "auto",
+        boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 40px ${ec.hex}15`,
+        animation: "popupIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both",
+      }}>
+        <button onClick={onClose} style={{
+          position: "absolute", top: 12, right: 14, background: "none", border: "none",
+          color: COLORS.textMuted, cursor: "pointer", fontSize: 18, padding: 4,
+        }}>×</button>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <div style={{ width: 12, height: 12, borderRadius: 2, background: ec.hex, boxShadow: `0 0 12px ${ec.hex}66`, transform: "rotate(45deg)" }} />
@@ -1589,7 +1595,8 @@ function ClusterPopup({ cluster, entries, onClose }) {
           </div>
         </div>
       ))}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -1785,6 +1792,7 @@ export default function Coil() {
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [zoomTarget, setZoomTarget] = useState(null);
   const [viewMode, setViewMode] = useState("surface"); // "surface" or "planet"
+  const [birthLabel, setBirthLabel] = useState(null); // { text, emotion, id } — fading label for new thought
 
   const DEMO = [
     // ─── Career anxiety cluster (8 entries → deep crater) ───
@@ -1908,24 +1916,28 @@ export default function Coil() {
     });
 
     if (coalesced) {
-      // Stars are merging into a diamond — play crystallization sound
       sound.play("coalesce");
     } else {
       sound.play("impact");
     }
 
-    // Navigate to the thought's terrain location
+    // ── Birth label: show the new thought name fading at screen center ──
+    const primaryLabel = normalizeKeyword(kw[0] || "thought");
+    setBirthLabel({ text: primaryLabel, emotion, id: ne.id });
+    setTimeout(() => setBirthLabel(null), 2800); // fade out after 2.8s
+
+    // Navigate camera to the new thought's location
     if (kw.length > 0) {
       const bestKw = kw.reduce((best, k) => {
         const nk = normalizeKeyword(k);
         const cluster = newClusters.find(c => c.label === nk);
         return (cluster && cluster.frequency > (best.freq || 0)) ? { kw: nk, freq: cluster.frequency } : best;
-      }, { kw: normalizeKeyword(kw[0]), freq: 0 });
+      }, { kw: primaryLabel, freq: 0 });
       setZoomTarget(null);
       setTimeout(() => setZoomTarget(bestKw.kw), 300);
       const cluster = newClusters.find(c => c.label === bestKw.kw);
       if (cluster && cluster.frequency >= 3) {
-        setTimeout(() => setSelectedCluster(cluster), 800);
+        setTimeout(() => setSelectedCluster(cluster), 2200); // wait for birth anim to mostly finish
       }
     }
   }, [inputText, entries, clusters, buildClusters]);
@@ -1942,6 +1954,18 @@ export default function Coil() {
     return () => { if (document.head.contains(l)) document.head.removeChild(l); };
   }, []);
 
+  // Escape key closes popup and sidebar
+  useEffect(() => {
+    const onEsc = (e) => {
+      if (e.key === "Escape") {
+        if (selectedCluster) setSelectedCluster(null);
+        else if (sidebarOpen) setSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [selectedCluster, sidebarOpen]);
+
   if (phase === "intro") return <CinematicIntro onEnter={handleEnter} />;
 
   return (
@@ -1952,6 +1976,42 @@ export default function Coil() {
       {flash && <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none",
         background: `radial-gradient(circle at 50% 50%, ${COLORS.glowAmber} 0%, transparent 50%)`,
         animation: "flashOut 0.8s ease-out forwards" }} />}
+
+      {/* Birth label — fading thought name when a new star is born */}
+      {birthLabel && (() => {
+        const ec = getEmotionColor(birthLabel.emotion);
+        return (
+          <div key={birthLabel.id} style={{ position: "absolute", top: "42%", left: "50%", zIndex: 45, pointerEvents: "none", textAlign: "center" }}>
+            {/* Star burst behind text */}
+            <div style={{
+              position: "absolute", top: "50%", left: "50%", width: 80, height: 80,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${ec.hex}44 0%, ${ec.hex}11 40%, transparent 70%)`,
+              animation: "starBurst 2.8s ease-out forwards",
+            }} />
+            {/* Thought label */}
+            <div style={{
+              position: "absolute", top: "50%", left: "50%", whiteSpace: "nowrap",
+              fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 300,
+              color: ec.hex, letterSpacing: "0.06em",
+              textShadow: `0 0 20px ${ec.hex}88, 0 0 40px ${ec.hex}44`,
+              animation: "birthFade 2.8s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+            }}>
+              {birthLabel.text}
+            </div>
+            {/* Emotion subtag */}
+            <div style={{
+              position: "absolute", top: "calc(50% + 28px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: "0.2em",
+              color: COLORS.textMuted,
+              animation: "birthFade 2.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards",
+              opacity: 0,
+            }}>
+              {ec.label.toUpperCase()}
+            </div>
+          </div>
+        );
+      })()}
 
       <PlanetScene clusters={clusters} entries={entries} onMarkerClick={handleMarkerClick} zoomTarget={zoomTarget} viewMode={viewMode} />
 
@@ -2036,6 +2096,9 @@ export default function Coil() {
         @keyframes fadeUp { from{opacity:0;transform:translateX(-50%) translateY(20px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
         @keyframes fadeDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes flashOut { 0%{opacity:0.5} 100%{opacity:0} }
+        @keyframes birthFade { 0%{opacity:0;transform:translate(-50%,-50%) scale(0.6)} 12%{opacity:1;transform:translate(-50%,-50%) scale(1.05)} 20%{transform:translate(-50%,-50%) scale(1)} 75%{opacity:0.9} 100%{opacity:0;transform:translate(-50%,-50%) scale(1) translateY(-18px)} }
+        @keyframes starBurst { 0%{opacity:0;transform:translate(-50%,-50%) scale(0)} 25%{opacity:1;transform:translate(-50%,-50%) scale(1.4)} 50%{transform:translate(-50%,-50%) scale(0.9)} 70%{opacity:0.7} 100%{opacity:0;transform:translate(-50%,-50%) scale(2)} }
+        @keyframes popupIn { 0%{opacity:0;transform:translate(-50%,-50%) scale(0.92)} 100%{opacity:1;transform:translate(-50%,-50%) scale(1)} }
         textarea::placeholder{color:${COLORS.textMuted};font-style:italic}
         ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:${COLORS.surfaceLight};border-radius:3px}
         *{box-sizing:border-box}
