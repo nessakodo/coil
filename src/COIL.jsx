@@ -903,17 +903,30 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode })
 
       if (mode === "surface") {
         // ═══ SURFACE MODE: Walk on flat terrain ═══
-        const walkSpeed = 0.08;
+        const walkSpeed = 0.35;
         const cosYaw = Math.cos(surf.yaw), sinYaw = Math.sin(surf.yaw);
         // WASD + arrows all walk
         if (keys["w"] || keys["arrowup"]) { surf.targetX += sinYaw * walkSpeed; surf.targetZ += cosYaw * walkSpeed; }
         if (keys["s"] || keys["arrowdown"]) { surf.targetX -= sinYaw * walkSpeed; surf.targetZ -= cosYaw * walkSpeed; }
         if (keys["a"] || keys["arrowleft"]) { surf.targetX += cosYaw * walkSpeed; surf.targetZ -= sinYaw * walkSpeed; }
         if (keys["d"] || keys["arrowright"]) { surf.targetX -= cosYaw * walkSpeed; surf.targetZ += sinYaw * walkSpeed; }
+        // Shift to sprint
+        if (keys["shift"]) {
+          const sprintMult = 2.5;
+          if (keys["w"] || keys["arrowup"]) { surf.targetX += sinYaw * walkSpeed * (sprintMult - 1); surf.targetZ += cosYaw * walkSpeed * (sprintMult - 1); }
+          if (keys["s"] || keys["arrowdown"]) { surf.targetX -= sinYaw * walkSpeed * (sprintMult - 1); surf.targetZ -= cosYaw * walkSpeed * (sprintMult - 1); }
+        }
+
+        // Wrap position so terrain feels like a planet (walk off one side, appear on the other)
+        const halfT = TERRAIN_SIZE * 0.5;
+        if (surf.targetX > halfT) { surf.targetX -= TERRAIN_SIZE; surf.x -= TERRAIN_SIZE; }
+        if (surf.targetX < -halfT) { surf.targetX += TERRAIN_SIZE; surf.x += TERRAIN_SIZE; }
+        if (surf.targetZ > halfT) { surf.targetZ -= TERRAIN_SIZE; surf.z -= TERRAIN_SIZE; }
+        if (surf.targetZ < -halfT) { surf.targetZ += TERRAIN_SIZE; surf.z += TERRAIN_SIZE; }
 
         // Smooth interpolation — responsive movement
-        surf.x += (surf.targetX - surf.x) * 0.12;
-        surf.z += (surf.targetZ - surf.z) * 0.12;
+        surf.x += (surf.targetX - surf.x) * 0.14;
+        surf.z += (surf.targetZ - surf.z) * 0.14;
         surf.yaw += (surf.targetYaw - surf.yaw) * 0.12;
         surf.pitch += (surf.targetPitch - surf.pitch) * 0.12;
 
@@ -1305,7 +1318,7 @@ function ClusterPopup({ cluster, entries, onClose }) {
 
 
 // ─── Category Sidebar (auto-minimized) ───
-function CategorySidebar({ clusters, entries, isOpen, onToggle }) {
+function CategorySidebar({ clusters, entries, isOpen, onToggle, onClusterClick }) {
   const [openCats, setOpenCats] = useState({});
 
   const grouped = useMemo(() => {
@@ -1382,7 +1395,14 @@ function CategorySidebar({ clusters, entries, isOpen, onToggle }) {
                   const ec = getEmotionColor(item.emotion);
                   const trend = emotionToTrend(item.emotion);
                   return (
-                    <div key={i} style={{ padding: "8px 0 8px 24px" }}>
+                    <div key={i}
+                      onClick={() => { if (onClusterClick) { onClusterClick(item.label); sound.play("reveal"); } }}
+                      onMouseEnter={() => sound.play("hover")}
+                      style={{ padding: "8px 0 8px 24px", cursor: "pointer", borderRadius: 6,
+                        transition: "background 0.2s ease" }}
+                      onMouseOver={(e) => e.currentTarget.style.background = `${COLORS.surfaceLight}22`}
+                      onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+                    >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                         <div style={{ width: 6, height: 6, borderRadius: "50%", background: ec.hex, boxShadow: `0 0 6px ${ec.hex}44` }} />
                         <span style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 13, color: COLORS.textPrimary }}>{item.label}</span>
@@ -1411,11 +1431,12 @@ function HotkeyPanel({ isOpen, onToggle, viewMode }) {
   const surfaceKeys = [
     { key: "W / ↑", action: "Walk forward" },
     { key: "S / ↓", action: "Walk backward" },
-    { key: "A / ←", action: "Walk left" },
-    { key: "D / →", action: "Walk right" },
+    { key: "A / ←", action: "Strafe left" },
+    { key: "D / →", action: "Strafe right" },
+    { key: "Shift + W/S", action: "Sprint" },
     { key: "Drag", action: "Look around" },
+    { key: "Sidebar item", action: "Jump to thought" },
     { key: "Click marker", action: "View thoughts" },
-    { key: "Tap marker", action: "View thoughts (mobile)" },
   ];
   const planetKeys = [
     { key: "W / ↑", action: "Orbit up" },
@@ -1628,7 +1649,8 @@ export default function Coil() {
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.textMuted, letterSpacing: "0.1em" }}>{entries.length} MAPPED</div>
       </div>
 
-      <CategorySidebar clusters={clusters} entries={entries} isOpen={sidebarOpen} onToggle={() => { setSidebarOpen(!sidebarOpen); sound.play("hover"); }} />
+      <CategorySidebar clusters={clusters} entries={entries} isOpen={sidebarOpen} onToggle={() => { setSidebarOpen(!sidebarOpen); sound.play("hover"); }}
+        onClusterClick={(label) => { setZoomTarget(null); setTimeout(() => setZoomTarget(label), 50); }} />
       <HotkeyPanel isOpen={hotkeyOpen} onToggle={() => setHotkeyOpen(!hotkeyOpen)} viewMode={viewMode} />
 
       {/* View Mode Toggle */}
