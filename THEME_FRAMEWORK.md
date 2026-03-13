@@ -336,20 +336,30 @@ Users can adjust visibility (0-100%) of each space layer independently:
 
 ## Audio Engine
 
-Web Audio API based, initialized on first user interaction:
+Web Audio API based, initialized on first user interaction. Sounds are lifecycle-aware — each growth stage has its own distinct click sound that progresses from light/quick to deep/resonant.
 
+### Interaction Sounds
 | Sound | Trigger | Character |
 |-------|---------|-----------|
 | submit | New thought entered | Rising major triad (C-E-G), 523/659/784 Hz |
 | impact | Thought lands (no threshold cross) | Descending sine 180→40 Hz |
-| coalesce | Additional entry to existing diamond | Rising harmonic shimmer (4 stacked sines) |
-| transform | Stars merge into new diamond (threshold 3) | Ascending cascade 330-880 Hz + crystallization snap |
-| miniDiamondClick | Click on mini-diamond (individual thought) | Glass marble drop: sine 2400→1600 Hz through highpass + metallic ping 4200 Hz |
-| diamondClick | Click on big diamond (aggregated cluster) | Cathedral bell: C4 fundamental + 4 harmonics, 1.2s decay + sub rumble 82 Hz |
+| coalesce | Additional entry to existing cluster | Rising harmonic shimmer (4 stacked sines) |
+| transform | Seeds merge into crystal (threshold 3) | Ascending cascade 330-880 Hz + crystallization snap |
 | hover | Button/marker hover | Quick 1200 Hz ping |
 | reveal | Mode switch / sidebar click | Descending 660→440 Hz |
 | zoom | Mode transition | Filtered sawtooth 40→120 Hz + rising sine |
 | drone | Background ambient | 55 Hz + 82.5 Hz through lowpass |
+
+### Lifecycle Click Sounds
+| Sound | Stage | Character |
+|-------|-------|-----------|
+| seedClick | Seed (1-2) | Soft crystal chime: sine 1800→1400 Hz + sparkle overtone 3600 Hz. Quick, gentle. |
+| crystalClick | Crystal (3-5) | Glass bell: C5 triangle fundamental + 2 harmonics (3.17x), 0.8s decay. Clear, present. |
+| clusterClick | Cluster (6-10) | Resonant chord: G4 triangle + 4 harmonics (1.5-4.5x), low body hum 98 Hz, 1.0s decay. Rich, layered. |
+| formationClick | Formation (11-20) | Cathedral bell: C4 triangle + 4 harmonics, 1.5s decay + sub rumble 82 Hz through lowpass. Deep, reverent. |
+| landmarkClick | Landmark (20+) | Deep gong: C3 + 6 harmonics (7 total), 2.5s decay + sub 55 Hz through lowpass + high shimmer 2200 Hz. Monumental. |
+
+Each stage sounds like a natural progression — seeds whisper, crystals ring, clusters chord, formations resonate, landmarks reverberate.
 
 ---
 

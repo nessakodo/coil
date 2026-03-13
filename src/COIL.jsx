@@ -161,41 +161,162 @@ class SoundEngine {
         o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.7);
       });
     }
-    if (type === "miniDiamondClick") {
-      // Glass marble drop — short, bright, percussive with a ring-out
+    // ═══ LIFECYCLE + EMOTION CLICK SOUNDS ═══
+    // Each stage has two flavors: Crater (stress — descending, minor, warm hollow)
+    //                              Flare  (resolved — ascending, major, bright airy)
+    // Neutral types fall through to the flare variant.
+
+    // Helper: make a filtered tone
+    const _tone = (freq, type2, vol, start, end, filterFreq) => {
+      const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+      o.type = type2; o.frequency.setValueAtTime(freq, start);
+      g.gain.setValueAtTime(vol, start); g.gain.exponentialRampToValueAtTime(0.001, end);
+      if (filterFreq) {
+        const f = this.ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = filterFreq;
+        o.connect(f).connect(g).connect(this.ctx.destination);
+      } else { o.connect(g).connect(this.ctx.destination); }
+      o.start(start); o.stop(end);
+      return o;
+    };
+
+    // ── SEED (1-2 entries) ──
+    if (type === "seedFlareClick" || type === "seedClick") {
+      // Ascending water drop — bright, hopeful, tiny
       const o1 = this.ctx.createOscillator(); const g1 = this.ctx.createGain();
-      const f1 = this.ctx.createBiquadFilter();
-      o1.type = "sine"; o1.frequency.setValueAtTime(2400, now); o1.frequency.exponentialRampToValueAtTime(1600, now + 0.15);
-      f1.type = "highpass"; f1.frequency.value = 800;
-      g1.gain.setValueAtTime(0.06, now); g1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-      o1.connect(f1).connect(g1).connect(this.ctx.destination); o1.start(now); o1.stop(now + 0.3);
-      // Tiny metallic ping — the marble hitting glass
-      const o2 = this.ctx.createOscillator(); const g2 = this.ctx.createGain();
-      o2.type = "triangle"; o2.frequency.setValueAtTime(4200, now); o2.frequency.exponentialRampToValueAtTime(3600, now + 0.06);
-      g2.gain.setValueAtTime(0.025, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-      o2.connect(g2).connect(this.ctx.destination); o2.start(now); o2.stop(now + 0.12);
+      o1.type = "sine"; o1.frequency.setValueAtTime(880, now); o1.frequency.exponentialRampToValueAtTime(1320, now + 0.15);
+      g1.gain.setValueAtTime(0.05, now); g1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      o1.connect(g1).connect(this.ctx.destination); o1.start(now); o1.stop(now + 0.3);
+      // Soft overtone shimmer
+      _tone(2640, "sine", 0.015, now + 0.02, now + 0.12);
     }
-    if (type === "diamondClick") {
-      // Cathedral bell strike — warm fundamental with long decay and harmonic overtones
-      const fundamental = 262; // C4 — middle C
-      [1, 2, 3, 4.75, 6.2].forEach((harmonic, i) => {
+    if (type === "seedCraterClick") {
+      // Descending soft thud — gentle, grounding
+      const o1 = this.ctx.createOscillator(); const g1 = this.ctx.createGain();
+      o1.type = "sine"; o1.frequency.setValueAtTime(660, now); o1.frequency.exponentialRampToValueAtTime(440, now + 0.2);
+      g1.gain.setValueAtTime(0.045, now); g1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      o1.connect(g1).connect(this.ctx.destination); o1.start(now); o1.stop(now + 0.35);
+      _tone(220, "sine", 0.025, now, now + 0.2, 300);
+    }
+
+    // ── CRYSTAL (3-5 entries) ──
+    if (type === "crystalFlareClick" || type === "crystalClick") {
+      // Major arpeggio — C E G ascending, glass-like
+      [523, 659, 784].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = "triangle"; o.frequency.setValueAtTime(freq, now + i * 0.06);
+        o.frequency.exponentialRampToValueAtTime(freq * 1.01, now + i * 0.06 + 0.5);
+        g.gain.setValueAtTime(0.04, now + i * 0.06); g.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.06); o.stop(now + 0.7);
+      });
+      _tone(1568, "sine", 0.012, now + 0.18, now + 0.45); // high sparkle
+    }
+    if (type === "crystalCraterClick") {
+      // Minor descent — E C A, deeper warmth
+      [659, 523, 440].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = "triangle"; o.frequency.setValueAtTime(freq, now + i * 0.07);
+        g.gain.setValueAtTime(0.038, now + i * 0.07); g.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.07); o.stop(now + 0.65);
+      });
+      _tone(110, "sine", 0.03, now + 0.05, now + 0.4, 250); // warm sub
+    }
+
+    // ── CLUSTER (6-10 entries) ──
+    if (type === "clusterFlareClick" || type === "clusterClick") {
+      // Bright chord bloom — G major with shimmer, like sunlight through crystal
+      [392, 494, 587, 784].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = i < 2 ? "triangle" : "sine";
+        o.frequency.setValueAtTime(freq * 0.98, now + i * 0.03);
+        o.frequency.exponentialRampToValueAtTime(freq, now + i * 0.03 + 0.15);
+        g.gain.setValueAtTime(0.035 / (1 + i * 0.2), now + i * 0.03);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.03); o.stop(now + 0.9);
+      });
+      _tone(1568, "sine", 0.01, now + 0.2, now + 0.6); // airy top
+      _tone(196, "sine", 0.025, now, now + 0.5); // warm body
+    }
+    if (type === "clusterCraterClick") {
+      // Hollow resonance — D minor chord, filtered, like a cave
+      [294, 349, 440, 587].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        const f = this.ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 800 - i * 100;
+        o.type = i < 2 ? "triangle" : "sine";
+        o.frequency.setValueAtTime(freq, now + i * 0.04);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.99, now + 0.9);
+        g.gain.setValueAtTime(0.035 / (1 + i * 0.25), now + i * 0.04);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+        o.connect(f).connect(g).connect(this.ctx.destination); o.start(now + i * 0.04); o.stop(now + 0.85);
+      });
+      _tone(73, "sine", 0.04, now, now + 0.6, 180); // deep earth rumble
+    }
+
+    // ── FORMATION (11-20 entries) ──
+    if (type === "formationFlareClick" || type === "formationClick") {
+      // Cathedral light — C major 7th with ascending sweep, open and soaring
+      [262, 330, 392, 494, 523].forEach((freq, i) => {
         const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
         o.type = i === 0 ? "triangle" : "sine";
-        o.frequency.setValueAtTime(fundamental * harmonic, now);
-        o.frequency.exponentialRampToValueAtTime(fundamental * harmonic * 0.998, now + 1.2);
-        const vol = 0.045 / (1 + i * 0.6);
-        g.gain.setValueAtTime(vol, now + i * 0.01);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 1.2 - i * 0.1);
-        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.01); o.stop(now + 1.2);
+        o.frequency.setValueAtTime(freq * 0.97, now + i * 0.05);
+        o.frequency.exponentialRampToValueAtTime(freq * 1.003, now + 1.3);
+        g.gain.setValueAtTime(0.04 / (1 + i * 0.3), now + i * 0.05);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.3);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.05); o.stop(now + 1.3);
       });
-      // Sub rumble — you feel this one
-      const sub = this.ctx.createOscillator(); const sg = this.ctx.createGain();
-      const sf = this.ctx.createBiquadFilter();
-      sub.type = "sine"; sub.frequency.value = 82;
-      sf.type = "lowpass"; sf.frequency.value = 200;
-      sg.gain.setValueAtTime(0.06, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-      sub.connect(sf).connect(sg).connect(this.ctx.destination); sub.start(now); sub.stop(now + 1.0);
+      _tone(1047, "sine", 0.008, now + 0.3, now + 1.0); // bell overtone
+      _tone(131, "sine", 0.04, now, now + 0.9); // foundation
     }
+    if (type === "formationCraterClick") {
+      // Tectonic weight — A minor stacked with low resonance, gravity
+      [220, 262, 330, 440, 523].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        const f = this.ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 600;
+        o.type = i === 0 ? "triangle" : "sine";
+        o.frequency.setValueAtTime(freq, now + i * 0.04);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.995, now + 1.3);
+        g.gain.setValueAtTime(0.04 / (1 + i * 0.35), now + i * 0.04);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+        o.connect(f).connect(g).connect(this.ctx.destination); o.start(now + i * 0.04); o.stop(now + 1.2);
+      });
+      _tone(55, "sine", 0.06, now, now + 1.0, 120); // seismic sub
+      _tone(82, "triangle", 0.03, now + 0.1, now + 0.8, 180); // tremor
+    }
+
+    // ── LANDMARK (20+ entries) ──
+    if (type === "landmarkFlareClick" || type === "landmarkClick") {
+      // Solar eruption — massive ascending chord with harmonic bloom and high shimmer
+      [131, 165, 196, 262, 330, 392, 523].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = i < 2 ? "triangle" : "sine";
+        o.frequency.setValueAtTime(freq * 0.96, now + i * 0.04);
+        o.frequency.exponentialRampToValueAtTime(freq * 1.005, now + 2.2);
+        g.gain.setValueAtTime(0.04 / (1 + i * 0.25), now + i * 0.04);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2.2);
+        o.connect(g).connect(this.ctx.destination); o.start(now + i * 0.04); o.stop(now + 2.2);
+      });
+      _tone(1047, "sine", 0.01, now + 0.3, now + 1.5); // high bell
+      _tone(2093, "sine", 0.006, now + 0.5, now + 1.2); // sparkle
+      _tone(65, "sine", 0.05, now, now + 1.5); // cosmic foundation
+    }
+    if (type === "landmarkCraterClick") {
+      // Tectonic monument — deep gong with filtered harmonics, vast and heavy
+      [65, 82, 131, 165, 196, 262, 330].forEach((freq, i) => {
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        const f = this.ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 500 + i * 50;
+        o.type = i < 3 ? "triangle" : "sine";
+        o.frequency.setValueAtTime(freq, now + i * 0.035);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.997, now + 2.2);
+        g.gain.setValueAtTime(0.045 / (1 + i * 0.22), now + i * 0.035);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2.0);
+        o.connect(f).connect(g).connect(this.ctx.destination); o.start(now + i * 0.035); o.stop(now + 2.0);
+      });
+      _tone(41, "sine", 0.07, now, now + 1.8, 100); // sub-bass you feel
+      _tone(55, "triangle", 0.04, now + 0.1, now + 1.2, 140); // earth hum
+    }
+
+    // Legacy aliases for backward compat
+    if (type === "miniDiamondClick") this.play("seedFlareClick");
+    if (type === "diamondClick") this.play("crystalFlareClick");
     if (type === "transform") {
       // Stars-to-diamond transformation — ascending cascade then crystallization snap
       [330, 440, 550, 660, 880].forEach((freq, i) => {
@@ -218,6 +339,63 @@ class SoundEngine {
   }
 }
 const sound = new SoundEngine();
+
+// ── Lifecycle stage helpers ──
+function getLifecycleStage(frequency) {
+  if (frequency >= 20) return "landmark";
+  if (frequency >= 11) return "formation";
+  if (frequency >= 6) return "cluster";
+  if (frequency >= 3) return "crystal";
+  return "seed";
+}
+function getLifecycleClickSound(frequency, emotion) {
+  const stage = getLifecycleStage(frequency);
+  const trend = emotion ? emotionToTrend(emotion) : "neutral";
+  // Each stage has a crater (stress/descending) and flare (resolved/ascending) variant
+  if (trend === "stress") return stage + "CraterClick";
+  if (trend === "resolved") return stage + "FlareClick";
+  return stage + "Click"; // neutral fallback plays flare variant
+}
+
+// ─── Color evolution: trajectory-based color shifting ───
+function computeTrajectory(entryTimestamps, dormantThresholdDays = 14) {
+  const now = Date.now();
+  const msPerDay = 86400000;
+  if (!entryTimestamps || entryTimestamps.length === 0) return { trajectory: 0, state: "dormant", daysSinceLastEntry: Infinity };
+  const sorted = [...entryTimestamps].sort((a, b) => b - a);
+  const daysSinceLastEntry = (now - sorted[0]) / msPerDay;
+  if (daysSinceLastEntry >= dormantThresholdDays) return { trajectory: 0, state: "dormant", daysSinceLastEntry };
+  // Compute frequency trend over last 14 days vs previous 14 days
+  const window1Start = now - 14 * msPerDay;
+  const window2Start = now - 28 * msPerDay;
+  const recentCount = sorted.filter(t => t >= window1Start).length;
+  const olderCount = sorted.filter(t => t >= window2Start && t < window1Start).length;
+  const delta = recentCount - olderCount;
+  // Positive delta = stress (increasing), negative = resolving (decreasing)
+  return { trajectory: delta, state: delta > 0 ? "stress" : delta < 0 ? "resolving" : "active", daysSinceLastEntry };
+}
+
+function lerpHexColor(hex1, hex2, t) {
+  const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
+  const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
+  const r = Math.round(r1 + (r2 - r1) * t), g = Math.round(g1 + (g2 - g1) * t), b = Math.round(b1 + (b2 - b1) * t);
+  return `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b.toString(16).padStart(2,"0")}`;
+}
+
+const EVOLUTION_COLORS = {
+  stress: "#a04a3a",
+  resolving: "#a0c8a0",
+  dormant: "#6a6a6a",
+  resurfaced: "#f0c896",
+};
+const MAX_TRAJECTORY_SHIFT = 0.6;
+
+function getEvolvedColor(baseHex, trajectoryState, trajectoryStrength) {
+  if (trajectoryState === "active") return baseHex;
+  const targetHex = EVOLUTION_COLORS[trajectoryState] || baseHex;
+  const t = Math.min(Math.abs(trajectoryStrength) * 0.12, MAX_TRAJECTORY_SHIFT);
+  return lerpHexColor(baseHex, targetHex, t);
+}
 
 // ─── Noise (3D for sphere) ───
 function noise3D(x, y, z) {
@@ -521,7 +699,7 @@ function CinematicIntro({ onEnter }) {
 // Two modes:
 //   SURFACE: Flat terrain (like original COIL) — camera hovers above, WASD walks, drag looks.
 //   PLANET: Sphere in space — orbital camera, full planet view.
-function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, sceneSettings, coalescingLabels }) {
+function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, sceneSettings, coalescingLabels, mobileMovRef, mobileZoomRef }) {
   const mountRef = useRef(null);
   const sceneRef = useRef({});
   const keysRef = useRef({});
@@ -564,20 +742,27 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       const planeZ = ((phi / Math.PI) - 0.5) * TERRAIN_SIZE;
       const trend = emotionToTrend(c.emotion);
       const ec = getEmotionColor(c.emotion);
-      // Deformation thresholds:
-      // 1-2 thoughts: color only, no deformation
-      // 3-4: subtle crater/bud (tiny dip or bump)
-      // 5-7: visible crater/flare
-      // 8+: pronounced but still planet-preserving
+      // Evolved color based on trajectory (stress/resolving/dormant shifts)
+      const evolvedHex = getEvolvedColor(ec.hex, c.trajectoryState || "active", c.trajectoryStrength || 0);
+      const er = parseInt(evolvedHex.slice(1, 3), 16) / 255;
+      const eg = parseInt(evolvedHex.slice(3, 5), 16) / 255;
+      const eb = parseInt(evolvedHex.slice(5, 7), 16) / 255;
+      // Deformation thresholds — now includes erosion for dormant patterns
       const freq = c.frequency;
-      const craterScale = trend === "stress" ? (freq < 3 ? 0 : freq < 5 ? 0.005 : freq < 8 ? 0.01 : 0.018) : 0;
-      const flareScale = trend === "resolved" ? (freq < 3 ? 0 : freq < 5 ? 0.004 : freq < 8 ? 0.008 : 0.014) : 0;
-      const neutralScale = trend === "neutral" ? (freq < 3 ? 0 : Math.min(freq * 0.003, 0.012)) : 0;
+      const dormantErosion = (c.trajectoryState === "dormant" && c.daysSinceLastEntry > 14)
+        ? Math.max(0, 1 - ((c.daysSinceLastEntry - 14) * 0.02)) : 1;
+      const craterScale = trend === "stress" ? (freq < 3 ? 0 : freq < 5 ? 0.005 : freq < 8 ? 0.01 : 0.018) * dormantErosion : 0;
+      const flareScale = trend === "resolved" ? (freq < 3 ? 0 : freq < 5 ? 0.004 : freq < 8 ? 0.008 : 0.014) * dormantErosion : 0;
+      const neutralScale = trend === "neutral" ? (freq < 3 ? 0 : Math.min(freq * 0.003, 0.012)) * dormantErosion : 0;
       return {
         ...c, spherePos: pos, direction: pos.clone().normalize(),
         planeX, planeZ,
         craterScale, flareScale, neutralScale, trend,
         color: new THREE.Color(ec.r, ec.g, ec.b), colorData: ec,
+        // Evolved color data for glow halos and terrain influence
+        evolvedHex, evolvedColor: new THREE.Color(er, eg, eb),
+        evolvedColorData: { hex: evolvedHex, r: er, g: eg, b: eb, label: ec.label },
+        lifecycleStage: c.lifecycleStage || getLifecycleStage(freq),
       };
     });
   }, [clusters]);
@@ -588,17 +773,23 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
     const { phi, theta } = hashToAngle(zoomTarget);
     const px = ((theta / (Math.PI * 2)) - 0.5) * TERRAIN_SIZE;
     const pz = ((phi / Math.PI) - 0.5) * TERRAIN_SIZE;
-    // Position camera just behind the thought so the mini-diamond is centered in view
+    // Position camera looking directly at the seed/diamond location
+    // Camera sits slightly behind and looks forward so the marker is centered in view
+    const approachDist = 3.5;
     surfRef.current.x = px;
-    surfRef.current.z = pz + 3.5;
+    surfRef.current.z = pz + approachDist;
     surfRef.current.targetX = px;
-    surfRef.current.targetZ = pz + 3.5;
-    surfRef.current.targetYaw = Math.atan2(0, -1); // face toward the cluster
+    surfRef.current.targetZ = pz + approachDist;
+    // Face directly toward the seed position
+    surfRef.current.targetYaw = Math.atan2(px - px, pz - (pz + approachDist));
     surfRef.current.yaw = surfRef.current.targetYaw;
-    // Planet: orbit to face that spot
+    // Tilt slightly down so the seed at y~2.8 is centered in the viewport
+    surfRef.current.targetPitch = -0.08;
+    surfRef.current.pitch = -0.08;
+    // Planet: orbit to face that spot — slightly closer for better seed visibility
     orbitRef.current.targetPhi = phi;
     orbitRef.current.targetTheta = theta + Math.PI;
-    orbitRef.current.targetRadius = 5.5;
+    orbitRef.current.targetRadius = 5.2;
   }, [zoomTarget]);
 
   // Snap camera to most recent thought on initial load
@@ -1218,10 +1409,12 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
           const ud = hits[0].object.userData;
           if (ud.isThoughtStar) {
             onMarkerClick({ type: "star", clusterLabel: ud.clusterLabel, thoughtId: ud.thoughtId });
-            sound.play("miniDiamondClick");
+            const cl = clusterData.find(cc => cc.label === ud.clusterLabel);
+            sound.play(getLifecycleClickSound(cl ? cl.frequency : 1, cl ? cl.emotion : null));
           } else {
             onMarkerClick({ type: "diamond", clusterLabel: ud.clusterLabel });
-            sound.play("diamondClick");
+            const cl = clusterData.find(cc => cc.label === ud.clusterLabel);
+            sound.play(getLifecycleClickSound(cl ? cl.frequency : 3, cl ? cl.emotion : null));
           }
         }
       }
@@ -1282,10 +1475,12 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
           const ud = hits[0].object.userData;
           if (ud.isThoughtStar) {
             onMarkerClick({ type: "star", clusterLabel: ud.clusterLabel, thoughtId: ud.thoughtId });
-            sound.play("miniDiamondClick");
+            const cl = clusterData.find(cc => cc.label === ud.clusterLabel);
+            sound.play(getLifecycleClickSound(cl ? cl.frequency : 1, cl ? cl.emotion : null));
           } else {
             onMarkerClick({ type: "diamond", clusterLabel: ud.clusterLabel });
-            sound.play("diamondClick");
+            const cl = clusterData.find(cc => cc.label === ud.clusterLabel);
+            sound.play(getLifecycleClickSound(cl ? cl.frequency : 3, cl ? cl.emotion : null));
           }
         }
       }
@@ -1333,6 +1528,15 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         if (keys["s"] || keys["arrowdown"]) { surf.targetX -= sinYaw * walkSpeed; surf.targetZ -= cosYaw * walkSpeed; }
         if (keys["a"] || keys["arrowleft"]) { surf.targetX += cosYaw * walkSpeed; surf.targetZ -= sinYaw * walkSpeed; }
         if (keys["d"] || keys["arrowright"]) { surf.targetX -= cosYaw * walkSpeed; surf.targetZ += sinYaw * walkSpeed; }
+        // Mobile joystick movement
+        if (mobileMovRef && mobileMovRef.current) {
+          const mx = mobileMovRef.current.x, my = mobileMovRef.current.y;
+          if (Math.abs(mx) > 0.05 || Math.abs(my) > 0.05) {
+            // y maps to forward/back (negative y = forward), x maps to strafe
+            surf.targetX += sinYaw * (-my) * walkSpeed + cosYaw * (-mx) * walkSpeed;
+            surf.targetZ += cosYaw * (-my) * walkSpeed - sinYaw * (-mx) * walkSpeed;
+          }
+        }
         // Shift to sprint
         if (keys["shift"]) {
           const sprintMult = 2.5;
@@ -1416,14 +1620,17 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
               const eased = influence * influence * (3 - 2 * influence);
               const freq = cluster.frequency;
 
+              // Use evolved color for terrain influence (shifts with trajectory)
+              const ecd = cluster.evolvedColorData || cluster.colorData;
+
               if (cluster.trend === "stress") {
                 // Small literal craters — gentle terrain dip
                 const terrainCraterDepth = freq < 3 ? 0 : freq < 5 ? 0.3 : freq < 8 ? 0.6 : 1.0;
                 elev -= eased * terrainCraterDepth;
                 const glow = (freq < 3 ? 0.2 : freq < 5 ? 0.35 : 0.5) + Math.min(freq * 0.04, 0.3);
-                cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow * 0.5;
-                cb += eased * cluster.colorData.b * glow * 0.5;
+                cr += eased * ecd.r * glow;
+                cg += eased * ecd.g * glow * 0.5;
+                cb += eased * ecd.b * glow * 0.5;
               } else if (cluster.trend === "resolved") {
                 // Animated budding flares on terrain
                 const terrainFlareHeight = freq < 3 ? 0 : freq < 5 ? 0.2 : freq < 8 ? 0.5 : 0.8;
@@ -1433,16 +1640,16 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
                 elev += eased * terrainFlareHeight * budding;
                 const glow = (freq < 3 ? 0.25 : freq < 5 ? 0.4 : 0.55) + Math.min(freq * 0.04, 0.3);
                 const colorPulse = 0.8 + Math.sin(t * pulseSpeed * 0.7) * 0.2;
-                cr += eased * cluster.colorData.r * glow * colorPulse;
-                cg += eased * cluster.colorData.g * glow * colorPulse;
-                cb += eased * cluster.colorData.b * glow * 0.8 * colorPulse;
+                cr += eased * ecd.r * glow * colorPulse;
+                cg += eased * ecd.g * glow * colorPulse;
+                cb += eased * ecd.b * glow * 0.8 * colorPulse;
               } else {
                 const terrainNeutral = freq < 3 ? 0 : Math.min(freq * 0.08, 0.4);
                 elev += eased * terrainNeutral;
                 const glow = freq < 3 ? 0.15 : 0.25;
-                cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow;
-                cb += eased * cluster.colorData.b * glow;
+                cr += eased * ecd.r * glow;
+                cg += eased * ecd.g * glow;
+                cb += eased * ecd.b * glow;
               }
             }
           }
@@ -1484,10 +1691,23 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         if (keys["s"] || keys["arrowdown"]) orbit.targetPhi = Math.min(Math.PI - 0.15, orbit.targetPhi + orbitSpeed);
         if (keys["a"] || keys["arrowleft"]) orbit.targetTheta += orbitSpeed;
         if (keys["d"] || keys["arrowright"]) orbit.targetTheta -= orbitSpeed;
+        // Mobile joystick orbit
+        if (mobileMovRef && mobileMovRef.current) {
+          const mx = mobileMovRef.current.x, my = mobileMovRef.current.y;
+          if (Math.abs(mx) > 0.05 || Math.abs(my) > 0.05) {
+            orbit.targetTheta -= mx * orbitSpeed * 1.2;
+            orbit.targetPhi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.targetPhi + my * orbitSpeed * 1.2));
+          }
+        }
         if (keys["q"] || keys["-"]) orbit.targetRadius = Math.min(14, orbit.targetRadius + 0.06);
         if (keys["e"] || keys["="]) orbit.targetRadius = Math.max(4, orbit.targetRadius - 0.06);
         if (keys["r"]) orbit.targetRadius = Math.max(4, orbit.targetRadius - 0.1);
         if (keys["f"]) orbit.targetRadius = Math.min(14, orbit.targetRadius + 0.1);
+        // Mobile zoom buttons
+        if (mobileZoomRef && mobileZoomRef.current !== 0) {
+          orbit.targetRadius = Math.max(4, Math.min(14, orbit.targetRadius - mobileZoomRef.current * 0.5));
+          mobileZoomRef.current = 0;
+        }
 
         orbit.phi += (orbit.targetPhi - orbit.phi) * 0.15;
         orbit.theta += (orbit.targetTheta - orbit.theta) * 0.15;
@@ -1541,34 +1761,31 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
             if (influence > 0) {
               const eased = influence * influence * (3 - 2 * influence);
               const freq = cluster.frequency;
+              // Use evolved color for planet terrain influence
+              const ecd = cluster.evolvedColorData || cluster.colorData;
 
               if (cluster.trend === "stress") {
-                // Craters: small literal dips, gentle pulsing at edges
                 displacement -= eased * cluster.craterScale;
-                // Color glow scales with frequency
                 const glow = (freq < 3 ? 0.2 : freq < 5 ? 0.35 : 0.5) + Math.min(freq * 0.04, 0.3);
-                cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow * 0.5;
-                cb += eased * cluster.colorData.b * glow * 0.5;
+                cr += eased * ecd.r * glow;
+                cg += eased * ecd.g * glow * 0.5;
+                cb += eased * ecd.b * glow * 0.5;
               } else if (cluster.trend === "resolved") {
-                // Flares: animated budding — they pulse and breathe
-                // Small flares pulse gently, big ones have stronger animation
                 const pulseSpeed = 0.6 + freq * 0.15;
                 const pulseAmp = freq < 5 ? 0.15 : freq < 8 ? 0.25 : 0.35;
                 const budding = 1.0 + Math.sin(t * pulseSpeed + angularDist * 8) * pulseAmp;
                 displacement += eased * cluster.flareScale * budding;
                 const glow = (freq < 3 ? 0.25 : freq < 5 ? 0.4 : 0.55) + Math.min(freq * 0.04, 0.3);
-                // Flare color also pulses with the budding
                 const colorPulse = 0.8 + Math.sin(t * pulseSpeed * 0.7) * 0.2;
-                cr += eased * cluster.colorData.r * glow * colorPulse;
-                cg += eased * cluster.colorData.g * glow * colorPulse;
-                cb += eased * cluster.colorData.b * glow * 0.8 * colorPulse;
+                cr += eased * ecd.r * glow * colorPulse;
+                cg += eased * ecd.g * glow * colorPulse;
+                cb += eased * ecd.b * glow * 0.8 * colorPulse;
               } else {
                 displacement += eased * cluster.neutralScale;
                 const glow = freq < 3 ? 0.15 : 0.25;
-                cr += eased * cluster.colorData.r * glow;
-                cg += eased * cluster.colorData.g * glow;
-                cb += eased * cluster.colorData.b * glow;
+                cr += eased * ecd.r * glow;
+                cg += eased * ecd.g * glow;
+                cb += eased * ecd.b * glow;
               }
             }
           }
@@ -1632,6 +1849,15 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
             m.userData.worldX = m.userData.clusterX + Math.cos(orbitAngle) * orbitR;
             m.userData.worldZ = m.userData.clusterZ + Math.sin(orbitAngle) * orbitR;
             m.position.y = 1.0 + Math.sin(t * 1.2 + m.userData.seed) * 0.12;
+          } else if (!m.userData.isAggregated && mode === "surface") {
+            // Standalone seed: gentle float/bob above terrain so it stays visible
+            m.position.y = 2.8 + Math.sin(t * 1.5 + m.userData.seed * 2.1) * 0.25;
+          } else if (!m.userData.isAggregated && mode === "planet") {
+            // Standalone seed on planet: gentle radial bob outward
+            if (m.userData.sphereDir) {
+              const bobR = 2.92 + Math.sin(t * 1.5 + m.userData.seed * 2.1) * 0.04;
+              m.position.copy(m.userData.sphereDir.clone().multiplyScalar(bobR));
+            }
           }
           // Twinkle animation — mini-diamond gentle pulse with gem proportions
           if (!isTransforming) {
@@ -1810,14 +2036,14 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
         formingRef.current.set(c.label, Date.now());
       }
 
-      // ── Diamond texture: tall faceted gem shape, emotion-colored ──
+      // ── Diamond texture: tall faceted gem shape, WHITE body with evolved-color glow ──
       const canvas = document.createElement("canvas");
       canvas.width = 64; canvas.height = 96; // taller canvas for elongated diamond
       const ctx = canvas.getContext("2d");
-      const hex = c.colorData.hex;
+      const hex = c.evolvedHex || c.colorData.hex; // evolved color for glow aura
       const cx = 32, cy = 48; // center of diamond
 
-      // Outer glow bloom — emotion-colored halo around a WHITE diamond
+      // Outer glow bloom — evolved-color halo around a WHITE diamond
       const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 40);
       grad.addColorStop(0, hex + "66");
       grad.addColorStop(0.12, hex + "44");
@@ -1943,7 +2169,7 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
 
       // Point lights
       if (c.frequency >= 2) {
-        const lightColor = new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
+        const lightColor = c.evolvedColor || new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
         const clusterLight = new THREE.PointLight(lightColor, Math.min(c.frequency * 0.08, 0.6), 2.5);
         clusterLight.position.copy(c.direction.clone().multiplyScalar(2.8 + 0.15));
         planetMarkerGroup.add(clusterLight);
@@ -1968,16 +2194,40 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
 
       // Position offset — golden angle spiral so mini-diamonds don't overlap
       const offsetAngle = entryIdx * goldenAngle;
-      const spreadDist = isAggregated ? (1.5 + (entryIdx % 5) * 0.5) : (2.5 + (entryIdx % 8) * 0.8);
 
       // Surface position
       const baseX = ((theta / (Math.PI * 2)) - 0.5) * TERRAIN_SZ;
       const baseZ = ((phi / Math.PI) - 0.5) * TERRAIN_SZ;
-      const starX = baseX + Math.cos(offsetAngle) * spreadDist;
-      const starZ = baseZ + Math.sin(offsetAngle) * spreadDist;
+
+      // Count how many entries share this keyword to determine spread
+      const siblingCount = entries.filter(e => normalizeKeyword((e.keywords && e.keywords[0]) || "") === primaryKw).length;
+      const siblingIdx = entries.filter((e, ei) => ei < entryIdx && normalizeKeyword((e.keywords && e.keywords[0]) || "") === primaryKw).length;
+
+      let spreadDist, starX, starZ;
+      if (isAggregated) {
+        // Orbiting around big diamond
+        spreadDist = 1.5 + (siblingIdx % 5) * 0.5;
+        starX = baseX + Math.cos(siblingIdx * goldenAngle) * spreadDist;
+        starZ = baseZ + Math.sin(siblingIdx * goldenAngle) * spreadDist;
+      } else if (siblingCount <= 1) {
+        // Solo seed: place exactly at base position (camera center)
+        spreadDist = 0;
+        starX = baseX;
+        starZ = baseZ;
+      } else {
+        // Multiple seeds for same keyword: tight spiral around center
+        spreadDist = 0.8 + siblingIdx * 0.6;
+        starX = baseX + Math.cos(siblingIdx * goldenAngle) * spreadDist;
+        starZ = baseZ + Math.sin(siblingIdx * goldenAngle) * spreadDist;
+      }
 
       // ── Create mini-diamond texture — same gem shape as big diamonds, just smaller ──
-      const ec = getEmotionColor(entry.emotion);
+      const ecBase = getEmotionColor(entry.emotion);
+      // Apply evolved color if this thought belongs to an evolving cluster
+      const clusterTraj = cluster ? (cluster.trajectoryState || "active") : "active";
+      const clusterStrength = cluster ? (cluster.trajectoryStrength || 0) : 0;
+      const evolvedMiniHex = getEvolvedColor(ecBase.hex, clusterTraj, clusterStrength);
+      const ec = { ...ecBase, hex: evolvedMiniHex };
       const miniCanvas = document.createElement("canvas");
       miniCanvas.width = 48; miniCanvas.height = 64; // proportional to big diamond (64x96)
       const mctx = miniCanvas.getContext("2d");
@@ -2039,10 +2289,12 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       miniTex.premultiplyAlpha = true;
 
       // ── Surface mini-diamond ──
-      const sMat = new THREE.SpriteMaterial({ map: miniTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.7 : 0.95, blending: THREE.AdditiveBlending });
+      // Standalone seeds are larger and float higher so they're clearly visible on terrain
+      const sMat = new THREE.SpriteMaterial({ map: miniTex, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.65 : 1.0, blending: THREE.AdditiveBlending });
       const sStar = new THREE.Sprite(sMat);
-      sStar.position.set(starX, 1.8 + Math.random() * 0.4, starZ);
-      const sBase = isAggregated ? 0.18 : 0.35;
+      const seedHoverY = isAggregated ? (1.0 + Math.random() * 0.3) : (2.8 + Math.random() * 0.3);
+      sStar.position.set(starX, seedHoverY, starZ);
+      const sBase = isAggregated ? 0.15 : 0.6;
       sStar.scale.set(sBase, sBase * 1.35, 1); // match diamond proportions
       sStar.userData = {
         clusterLabel: primaryKw, seed: entryIdx * 2.3 + 0.5, baseScale: sBase,
@@ -2058,16 +2310,18 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       const sphereDir = keywordToSpherePos(primaryKw, 1).normalize();
       const tangent = new THREE.Vector3(-sphereDir.z, 0, sphereDir.x).normalize();
       const bitangent = new THREE.Vector3().crossVectors(sphereDir, tangent).normalize();
-      const pSpreadDist = isAggregated ? 0.02 + (entryIdx % 5) * 0.008 : 0.04 + (entryIdx % 8) * 0.01;
+      const pSpreadDist = isAggregated ? 0.02 + (siblingIdx % 5) * 0.008 : (siblingCount <= 1 ? 0 : 0.01 + siblingIdx * 0.008);
       const pDir = sphereDir.clone()
-        .addScaledVector(tangent, Math.cos(offsetAngle) * pSpreadDist)
-        .addScaledVector(bitangent, Math.sin(offsetAngle) * pSpreadDist)
+        .addScaledVector(tangent, Math.cos(siblingIdx * goldenAngle) * pSpreadDist)
+        .addScaledVector(bitangent, Math.sin(siblingIdx * goldenAngle) * pSpreadDist)
         .normalize();
 
-      const pMat = new THREE.SpriteMaterial({ map: miniTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.65 : 0.9, blending: THREE.AdditiveBlending });
+      const pMat = new THREE.SpriteMaterial({ map: miniTex.clone(), transparent: true, depthWrite: false, sizeAttenuation: true, opacity: isAggregated ? 0.6 : 1.0, blending: THREE.AdditiveBlending });
       const pStar = new THREE.Sprite(pMat);
-      pStar.position.copy(pDir.clone().multiplyScalar(2.82));
-      const pBase = isAggregated ? 0.018 : 0.032;
+      // Standalone seeds hover slightly further from planet surface for visibility
+      const pRadius = isAggregated ? 2.82 : 2.92;
+      pStar.position.copy(pDir.clone().multiplyScalar(pRadius));
+      const pBase = isAggregated ? 0.015 : 0.06;
       pStar.scale.set(pBase, pBase * 1.35, 1);
       pStar.userData = {
         clusterLabel: primaryKw, seed: entryIdx * 2.3 + 0.5, baseScale: pBase,
@@ -2079,12 +2333,13 @@ function PlanetScene({ clusters, entries, onMarkerClick, zoomTarget, viewMode, s
       thoughtStarsRef.current.push(pStar);
     });
 
-    // Also add point lights for freq >= 2 non-diamond clusters
+    // Add point lights under standalone seeds + low-freq clusters for terrain glow
     clusterData.forEach(c => {
-      if (c.frequency >= 2 && c.frequency < 3) {
-        const lightColor = new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
-        const surfLight = new THREE.PointLight(lightColor, Math.min(c.frequency * 0.1, 0.4), 8);
-        surfLight.position.set(c.planeX, 1.0, c.planeZ);
+      if (c.frequency >= 1 && c.frequency < 3) {
+        const lightColor = c.evolvedColor || new THREE.Color(c.colorData.r, c.colorData.g, c.colorData.b);
+        const intensity = c.frequency === 1 ? 0.2 : 0.35;
+        const surfLight = new THREE.PointLight(lightColor, intensity, 8);
+        surfLight.position.set(c.planeX, 1.5, c.planeZ);
         surfLight.userData = { worldX: c.planeX, worldZ: c.planeZ };
         surfaceMarkerGroup.add(surfLight);
       }
@@ -2111,7 +2366,8 @@ function ClusterPopup({ cluster, entries, onClose }) {
       }} />
       <div onClick={(e) => e.stopPropagation()} style={{
         position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        background: `${COLORS.bg}f5`, backdropFilter: "blur(24px)",
+        background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+        backdropFilter: "blur(16px)",
         border: `1px solid ${ec.hex}44`, borderRadius: 16, padding: "24px 28px",
         maxWidth: 380, width: "90%", zIndex: 40, maxHeight: "60vh", overflowY: "auto",
         boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 40px ${ec.hex}15`,
@@ -2168,7 +2424,8 @@ function ThoughtPopup({ thought, clusters, onClose, onViewCluster }) {
       <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 39, cursor: "pointer" }} />
       <div onClick={(e) => e.stopPropagation()} style={{
         position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        background: `${COLORS.bg}f5`, backdropFilter: "blur(24px)",
+        background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+        backdropFilter: "blur(16px)",
         border: `1px solid ${ec.hex}33`, borderRadius: 14, padding: "22px 26px",
         maxWidth: 340, width: "85%", zIndex: 40,
         boxShadow: `0 16px 48px rgba(0,0,0,0.5), 0 0 30px ${ec.hex}10`,
@@ -2199,7 +2456,7 @@ function ThoughtPopup({ thought, clusters, onClose, onViewCluster }) {
           fontFamily: "'DM Sans'", fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.7,
           padding: "12px 0", borderTop: `1px solid ${COLORS.surfaceLight}22`, borderBottom: `1px solid ${COLORS.surfaceLight}22`,
         }}>
-          "{entry.rawText}"
+          {entry.rawText}
         </div>
 
         {/* Metadata */}
@@ -2277,15 +2534,17 @@ function CategorySidebar({ clusters, entries, isOpen, onToggle, onClusterClick }
     <>
       <button onClick={onToggle} onMouseEnter={() => sound.play("hover")} style={{
         position: "absolute", top: 18, left: 18, width: 40, height: 40, borderRadius: 10,
-        background: `${COLORS.surface}cc`, border: `1px solid ${COLORS.surfaceLight}`,
+        background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+        border: `1px solid ${COLORS.surfaceLight}`,
         color: COLORS.amber, cursor: "pointer", display: "flex", alignItems: "center",
-        justifyContent: "center", fontSize: 16, zIndex: 30, backdropFilter: "blur(8px)",
+        justifyContent: "center", fontSize: 16, zIndex: 30, backdropFilter: "blur(12px)",
       }}>
         {isOpen ? "×" : "≡"}
       </button>
       <div data-sidebar="true" style={{
         position: "absolute", top: 0, left: 0, width: 300, height: "100%",
-        background: `${COLORS.bg}f8`, backdropFilter: "blur(24px)",
+        background: `linear-gradient(180deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}cc)`,
+        backdropFilter: "blur(16px)",
         borderRight: `1px solid ${COLORS.surfaceLight}`,
         transform: isOpen ? "translateX(0)" : "translateX(-100%)",
         transition: "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
@@ -2341,7 +2600,7 @@ function CategorySidebar({ clusters, entries, isOpen, onToggle, onClusterClick }
                         <div style={{ width: 6, height: 6, borderRadius: "50%", background: ec.hex, boxShadow: `0 0 6px ${ec.hex}44` }} />
                         <span style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 13, color: COLORS.textPrimary }}>{item.label}</span>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: ec.hex, marginLeft: "auto" }}>
-                          {item.frequency}× · {trend === "stress" ? "crater" : trend === "resolved" ? "flare" : "ridge"}
+                          {item.frequency}× · {item.lifecycleStage || getLifecycleStage(item.frequency)}
                         </span>
                       </div>
                       <div style={{ marginTop: 3, marginLeft: 12, height: 2, background: COLORS.surfaceLight, borderRadius: 1, overflow: "hidden" }}>
@@ -2361,7 +2620,7 @@ function CategorySidebar({ clusters, entries, isOpen, onToggle, onClusterClick }
 
 
 // ─── Hotkey Panel ───
-function HotkeyPanel({ isOpen, onToggle, viewMode }) {
+function HotkeyPanel({ isOpen, onToggle, viewMode, isMobile }) {
   const surfaceKeys = [
     { key: "W / ↑", action: "Walk forward" },
     { key: "S / ↓", action: "Walk backward" },
@@ -2392,21 +2651,22 @@ function HotkeyPanel({ isOpen, onToggle, viewMode }) {
   return (
     <>
       <button onClick={onToggle} onMouseEnter={() => sound.play("hover")} style={{
-        position: "absolute", bottom: 18, right: 18, zIndex: 30,
+        position: "absolute", bottom: isMobile ? 128 : 18, right: 18, zIndex: 30,
         background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
         border: `1px solid ${isOpen ? COLORS.amber + "44" : COLORS.surfaceLight}`,
-        borderRadius: 12, padding: "7px 14px", cursor: "pointer",
+        borderRadius: 12, padding: isMobile ? "6px 10px" : "7px 14px", cursor: "pointer",
         backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: 6,
         transition: "all 0.3s ease",
         boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
       }}>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.12em", color: isOpen ? COLORS.amber : COLORS.textSecondary }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: isMobile ? 8 : 9, letterSpacing: "0.12em", color: isOpen ? COLORS.amber : COLORS.textSecondary }}>
           ? KEYS
         </span>
       </button>
       <div data-panel="true" style={{
-        position: "absolute", bottom: 60, right: 18, width: 220,
-        background: `${COLORS.bg}f5`, backdropFilter: "blur(20px)",
+        position: "absolute", bottom: isMobile ? 168 : 60, right: 18, width: isMobile ? 200 : 220,
+        background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+        backdropFilter: "blur(16px)",
         border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 12,
         padding: "16px 18px", zIndex: 30,
         opacity: isOpen ? 1 : 0,
@@ -2430,7 +2690,7 @@ function HotkeyPanel({ isOpen, onToggle, viewMode }) {
 
 
 // ─── Scene Settings Panel ───
-function SceneSettingsPanel({ isOpen, onToggle, settings, onChange }) {
+function SceneSettingsPanel({ isOpen, onToggle, settings, onChange, isMobile }) {
   const sliders = [
     { key: "starFieldOpacity", label: "Galaxy Stars" },
     { key: "nebulaOpacity", label: "Nebulae" },
@@ -2458,21 +2718,22 @@ function SceneSettingsPanel({ isOpen, onToggle, settings, onChange }) {
       <button onClick={() => { onToggle(); sound.play("hover"); }}
         onMouseEnter={() => sound.play("hover")}
         style={{
-          position: "absolute", bottom: 18, left: 18, zIndex: 30,
+          position: "absolute", bottom: isMobile ? 128 : 18, left: 18, zIndex: 30,
           background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
           border: `1px solid ${isOpen ? COLORS.amber + "44" : COLORS.surfaceLight}`,
-          borderRadius: 12, padding: "7px 14px", cursor: "pointer",
+          borderRadius: 12, padding: isMobile ? "6px 10px" : "7px 14px", cursor: "pointer",
           backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: 6,
           transition: "all 0.3s ease",
           boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
         }}>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.12em", color: isOpen ? COLORS.amber : COLORS.textSecondary }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: isMobile ? 8 : 9, letterSpacing: "0.12em", color: isOpen ? COLORS.amber : COLORS.textSecondary }}>
           {"\u2699"} SCENE
         </span>
       </button>
       <div data-panel="true" style={{
-        position: "absolute", bottom: 62, left: 18, width: 240,
-        background: `${COLORS.bg}f5`, backdropFilter: "blur(20px)",
+        position: "absolute", bottom: isMobile ? 168 : 62, left: 18, width: isMobile ? 200 : 240,
+        background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
+        backdropFilter: "blur(16px)",
         border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 12,
         padding: "16px 18px", zIndex: 30,
         opacity: isOpen ? 1 : 0,
@@ -2523,6 +2784,83 @@ function SceneSettingsPanel({ isOpen, onToggle, settings, onChange }) {
 }
 
 // ─── Main ───
+// ─── Mobile detection ───
+const isMobileDevice = () => typeof window !== "undefined" && (window.innerWidth <= 768 || ("ontouchstart" in window && window.innerWidth <= 1024));
+
+// ─── Virtual Joystick Component for mobile movement ───
+function VirtualJoystick({ onMove, viewMode, onZoomIn, onZoomOut }) {
+  const stickRef = useRef(null);
+  const moveRef = useRef({ x: 0, y: 0 });
+  const animRef = useRef(null);
+  const activeRef = useRef(false);
+
+  const handleStart = useCallback((cx, cy) => {
+    const el = stickRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = (cx - centerX) / (rect.width / 2);
+    const dy = (cy - centerY) / (rect.height / 2);
+    const mag = Math.min(1, Math.sqrt(dx * dx + dy * dy));
+    const angle = Math.atan2(dy, dx);
+    moveRef.current = { x: Math.cos(angle) * mag, y: Math.sin(angle) * mag };
+    activeRef.current = true;
+  }, []);
+
+  const handleEnd = useCallback(() => {
+    moveRef.current = { x: 0, y: 0 };
+    activeRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      if (activeRef.current && onMove) onMove(moveRef.current);
+      animRef.current = requestAnimationFrame(tick);
+    };
+    animRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [onMove]);
+
+  const zoomBtnStyle = {
+    width: 34, height: 34, borderRadius: "50%",
+    background: `${COLORS.surface}cc`, border: `1px solid ${COLORS.surfaceLight}55`,
+    color: COLORS.amber, fontSize: 16, fontWeight: 500,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    touchAction: "none", userSelect: "none", cursor: "pointer",
+  };
+
+  return (
+    <div style={{ position: "absolute", bottom: 130, left: 14, zIndex: 25, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      {/* Zoom buttons for planet mode */}
+      {viewMode === "planet" && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+          <div onTouchStart={(e) => { e.preventDefault(); onZoomIn && onZoomIn(); }} style={zoomBtnStyle}>+</div>
+          <div onTouchStart={(e) => { e.preventDefault(); onZoomOut && onZoomOut(); }} style={zoomBtnStyle}>&minus;</div>
+        </div>
+      )}
+      {/* Directional joystick */}
+      <div ref={stickRef}
+        onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }}
+        onTouchMove={(e) => { e.preventDefault(); e.stopPropagation(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }}
+        onTouchEnd={(e) => { e.preventDefault(); handleEnd(); }}
+        style={{
+          width: 86, height: 86, borderRadius: "50%",
+          background: `radial-gradient(circle, ${COLORS.surface}88 0%, ${COLORS.surface}44 60%, transparent 100%)`,
+          border: `1px solid ${COLORS.surfaceLight}55`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          touchAction: "none", userSelect: "none", position: "relative",
+        }}>
+        <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", color: COLORS.textMuted, fontSize: 10, opacity: 0.6 }}>{"\u25B2"}</div>
+        <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", color: COLORS.textMuted, fontSize: 10, opacity: 0.6 }}>{"\u25BC"}</div>
+        <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.textMuted, fontSize: 10, opacity: 0.6 }}>{"\u25C0"}</div>
+        <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.textMuted, fontSize: 10, opacity: 0.6 }}>{"\u25B6"}</div>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS.amber + "66" }} />
+      </div>
+    </div>
+  );
+}
+
 export default function Coil() {
   const [phase, setPhase] = useState("intro");
   const [entries, setEntries] = useState([]);
@@ -2538,6 +2876,9 @@ export default function Coil() {
   const [birthLabel, setBirthLabel] = useState(null); // { text, emotion, id } — fading label for new thought
   const [coalescingLabels, setCoalescingLabels] = useState([]); // cluster labels currently transforming
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(isMobileDevice);
+  const mobileMovRef = useRef({ x: 0, y: 0 });
+  const mobileZoomRef = useRef(0); // -1 = zoom out, 0 = none, +1 = zoom in
   const [sceneSettings, setSceneSettings] = useState({
     starFieldOpacity: 1.0,    // background galaxy stars
     nebulaOpacity: 1.0,       // volumetric nebulae
@@ -2613,12 +2954,14 @@ export default function Coil() {
     // Phase 1: aggregate by NORMALIZED keyword — "built"/"building" → "build"
     list.forEach(e => e.keywords.forEach(k => {
       const nk = normalizeKeyword(k);
-      if (!m[nk]) m[nk] = { label: nk, frequency: 0, firstSeen: e.timestamp, lastSeen: e.timestamp, emotion: e.emotion, entries: [], emotionCounts: {}, rawKeywords: new Set() };
+      if (!m[nk]) m[nk] = { label: nk, frequency: 0, firstSeen: e.timestamp, lastSeen: e.timestamp, emotion: e.emotion, entries: [], emotionCounts: {}, rawKeywords: new Set(), entryTimestamps: [] };
       m[nk].frequency++; m[nk].lastSeen = e.timestamp; m[nk].entries.push(e.id);
       m[nk].rawKeywords.add(k);
       m[nk].emotionCounts[e.emotion] = (m[nk].emotionCounts[e.emotion] || 0) + 1;
+      // Store timestamp for trajectory computation (keep last 30)
+      m[nk].entryTimestamps.push(e.timestamp);
     }));
-    // Phase 2: assign dominant emotion (most frequent emotion for this keyword)
+    // Phase 2: assign dominant emotion, compute trajectory, determine lifecycle stage
     Object.values(m).forEach(cluster => {
       let maxCount = 0, dominant = cluster.emotion;
       for (const [em, count] of Object.entries(cluster.emotionCounts)) {
@@ -2626,6 +2969,15 @@ export default function Coil() {
       }
       cluster.emotion = dominant;
       cluster.rawKeywords = [...cluster.rawKeywords]; // Set → Array
+      // Keep only last 30 timestamps for performance
+      if (cluster.entryTimestamps.length > 30) cluster.entryTimestamps = cluster.entryTimestamps.slice(-30);
+      // Compute trajectory (stress/resolving/dormant/active)
+      const traj = computeTrajectory(cluster.entryTimestamps);
+      cluster.trajectoryState = traj.state;
+      cluster.trajectoryStrength = traj.trajectory;
+      cluster.daysSinceLastEntry = traj.daysSinceLastEntry;
+      // Lifecycle stage
+      cluster.lifecycleStage = getLifecycleStage(cluster.frequency);
     });
     return Object.values(m).filter(p => p.frequency >= 1).sort((a, b) => b.frequency - a.frequency).slice(0, 40);
   }, []);
@@ -2664,50 +3016,63 @@ export default function Coil() {
     setEntries(all); setClusters(newClusters); setInputText("");
     setFlash(true); setTimeout(() => setFlash(false), 800);
 
-    // Detect if any cluster just crossed the aggregation threshold (freq 3)
-    let coalesced = false;
-    newClusters.forEach(c => {
-      const oldFreq = oldFreqs[c.label] || 0;
-      if (oldFreq < 3 && c.frequency >= 3) coalesced = true;
-    });
-
-    // Collect labels that just crossed threshold for transformation animation
+    // Detect lifecycle stage transitions
+    // Thresholds: seed(1-2) → crystal(3) → cluster(6) → formation(11) → landmark(20)
+    const lifecycleBoundaries = [3, 6, 11, 20];
     const newCoalescing = [];
+    let highestCrossedStage = null;
+
     newClusters.forEach(c => {
       const oldFreq = oldFreqs[c.label] || 0;
-      if (oldFreq < 3 && c.frequency >= 3) newCoalescing.push(c.label);
+      for (const boundary of lifecycleBoundaries) {
+        if (oldFreq < boundary && c.frequency >= boundary) {
+          if (boundary === 3) newCoalescing.push(c.label); // visual transform anim for seed→crystal
+          const newStage = getLifecycleStage(c.frequency);
+          if (!highestCrossedStage || c.frequency > (highestCrossedStage.freq || 0)) {
+            highestCrossedStage = { stage: newStage, freq: c.frequency, label: c.label, emotion: c.emotion };
+          }
+        }
+      }
     });
 
     if (newCoalescing.length > 0) {
+      // Seed → Crystal: the big visual transformation
       sound.play("transform");
       setCoalescingLabels(newCoalescing);
-      // Clear after animation completes (1.5s)
       setTimeout(() => setCoalescingLabels([]), 1500);
-    } else if (coalesced) {
-      sound.play("coalesce");
+    } else if (highestCrossedStage) {
+      // Higher lifecycle transition: play the stage's click sound as a "level up"
+      sound.play(getLifecycleClickSound(highestCrossedStage.freq, highestCrossedStage.emotion));
+      setFlash(true); setTimeout(() => setFlash(false), 600);
     } else {
+      // No lifecycle crossing — regular impact for a new seed
       sound.play("impact");
     }
 
-    // ── Birth label: show the new thought name fading at screen center ──
+    // Navigate camera to the new thought's location FIRST so the persistent
+    // mini-diamond is centered by the time the birth animation fades
     const primaryLabel = normalizeKeyword(kw[0] || "thought");
-    setBirthLabel({ text: primaryLabel, emotion, id: ne.id });
-    setTimeout(() => setBirthLabel(null), 2800); // fade out after 2.8s
-
-    // Navigate camera to the new thought's location
+    let bestKwLabel = primaryLabel;
     if (kw.length > 0) {
       const bestKw = kw.reduce((best, k) => {
         const nk = normalizeKeyword(k);
         const cluster = newClusters.find(c => c.label === nk);
         return (cluster && cluster.frequency > (best.freq || 0)) ? { kw: nk, freq: cluster.frequency } : best;
       }, { kw: primaryLabel, freq: 0 });
+      bestKwLabel = bestKw.kw;
+      // Zoom immediately so the camera lands on the persistent marker
       setZoomTarget(null);
-      setTimeout(() => setZoomTarget(bestKw.kw), 300);
-      const cluster = newClusters.find(c => c.label === bestKw.kw);
+      setTimeout(() => setZoomTarget(bestKwLabel), 50);
+      const cluster = newClusters.find(c => c.label === bestKwLabel);
       if (cluster && cluster.frequency >= 3) {
-        setTimeout(() => setSelectedCluster(cluster), 2200); // wait for birth anim to mostly finish
+        setTimeout(() => setSelectedCluster(cluster), 2200);
       }
     }
+
+    // ── Birth label: temporary overlay that fades after 2.8s ──
+    // The real persistent seed lives in the 3D scene as a mini-diamond sprite
+    setBirthLabel({ text: primaryLabel, emotion, id: ne.id });
+    setTimeout(() => setBirthLabel(null), 2800);
   }, [inputText, entries, clusters, buildClusters]);
 
   const [selectedThought, setSelectedThought] = useState(null); // individual star click
@@ -2733,6 +3098,22 @@ export default function Coil() {
     l.rel = "stylesheet"; document.head.appendChild(l);
     return () => { if (document.head.contains(l)) document.head.removeChild(l); };
   }, []);
+
+  // Mobile resize listener
+  useEffect(() => {
+    const onResize = () => setIsMobile(isMobileDevice());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Mobile joystick move callback
+  const handleMobileMove = useCallback((vec) => {
+    mobileMovRef.current = vec;
+  }, []);
+
+  // Mobile zoom callbacks for planet orbit
+  const handleMobileZoomIn = useCallback(() => { mobileZoomRef.current = 1; }, []);
+  const handleMobileZoomOut = useCallback(() => { mobileZoomRef.current = -1; }, []);
 
   // Escape key closes popup and sidebar
   useEffect(() => {
@@ -2767,15 +3148,14 @@ export default function Coil() {
       {birthLabel && (() => {
         const ec = getEmotionColor(birthLabel.emotion);
         return (
-          <div key={birthLabel.id} style={{ position: "absolute", top: "38%", left: "50%", zIndex: 45, pointerEvents: "none", textAlign: "center" }}>
+          <div key={birthLabel.id} style={{ position: "absolute", top: "42%", left: "50%", zIndex: 45, pointerEvents: "none", textAlign: "center" }}>
             {/* Outer pulse ring */}
             <div style={{
               position: "absolute", top: "50%", left: "50%", width: 220, height: 220,
-              borderRadius: "50%",
-              border: `1px solid ${ec.hex}55`,
+              borderRadius: "50%", border: `1px solid ${ec.hex}55`,
               animation: "birthRing 2.4s ease-out forwards",
             }} />
-            {/* Star burst — large, bright radial explosion */}
+            {/* Star burst */}
             <div style={{
               position: "absolute", top: "50%", left: "50%", width: 180, height: 180,
               borderRadius: "50%",
@@ -2800,7 +3180,7 @@ export default function Coil() {
               background: `linear-gradient(to right, transparent, ${ec.hex}88, transparent)`,
               animation: "birthRay 2s ease-out forwards",
             }} />
-            {/* Mini-diamond icon — the gem that just landed */}
+            {/* Mini-diamond icon */}
             <div style={{
               position: "absolute", top: "calc(50% - 28px)", left: "50%",
               width: 12, height: 16,
@@ -2842,7 +3222,7 @@ export default function Coil() {
         );
       })()}
 
-      <PlanetScene clusters={clusters} entries={entries} onMarkerClick={handleMarkerClick} zoomTarget={zoomTarget} viewMode={viewMode} sceneSettings={sceneSettings} coalescingLabels={coalescingLabels} />
+      <PlanetScene clusters={clusters} entries={entries} onMarkerClick={handleMarkerClick} zoomTarget={zoomTarget} viewMode={viewMode} sceneSettings={sceneSettings} coalescingLabels={coalescingLabels} mobileMovRef={mobileMovRef} mobileZoomRef={mobileZoomRef} />
 
       {/* Header — top center so it doesn't overlap the toggle button */}
       <div style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 20, display: "flex", alignItems: "center", gap: 10, animation: "fadeDown 1s ease 0.4s both", pointerEvents: "none" }}>
@@ -2856,26 +3236,40 @@ export default function Coil() {
           // Center the camera on this cluster
           setZoomTarget(null);
           setTimeout(() => setZoomTarget(label), 50);
-          // Show the cluster popup with all thoughts for this pattern
+          // Play lifecycle-appropriate sound
           const cluster = clusters.find(c => c.label === label);
-          if (cluster) setTimeout(() => setSelectedCluster(cluster), 400);
+          if (cluster) {
+            sound.play(getLifecycleClickSound(cluster.frequency, cluster.emotion));
+            // For seeds (1-2 entries), show the most recent thought popup
+            // For crystals+ (3+), show the cluster popup
+            if (cluster.frequency <= 2) {
+              const relatedEntries = entries.filter(e => e.keywords.some(k => normalizeKeyword(k) === label));
+              const latest = relatedEntries[relatedEntries.length - 1];
+              if (latest) setTimeout(() => { setSelectedCluster(null); setSelectedThought({ entry: latest, clusterLabel: label }); }, 400);
+            } else {
+              setTimeout(() => setSelectedCluster(cluster), 400);
+            }
+          }
         }} />
-      <HotkeyPanel isOpen={hotkeyOpen} onToggle={() => setHotkeyOpen(!hotkeyOpen)} viewMode={viewMode} />
-      <SceneSettingsPanel isOpen={settingsOpen} onToggle={() => setSettingsOpen(!settingsOpen)} settings={sceneSettings} onChange={setSceneSettings} />
+      <HotkeyPanel isOpen={hotkeyOpen} onToggle={() => setHotkeyOpen(!hotkeyOpen)} viewMode={viewMode} isMobile={isMobile} />
+      <SceneSettingsPanel isOpen={settingsOpen} onToggle={() => setSettingsOpen(!settingsOpen)} settings={sceneSettings} onChange={setSceneSettings} isMobile={isMobile} />
+
+      {/* Mobile virtual joystick */}
+      {isMobile && <VirtualJoystick onMove={handleMobileMove} viewMode={viewMode} onZoomIn={handleMobileZoomIn} onZoomOut={handleMobileZoomOut} />}
 
       {/* View Mode Toggle */}
       <button onClick={() => { setViewMode(v => v === "surface" ? "planet" : "surface"); sound.play("reveal"); }}
         onMouseEnter={() => sound.play("hover")}
         style={{
-          position: "absolute", top: 18, right: 18, zIndex: 30,
+          position: "absolute", top: isMobile ? 14 : 18, right: isMobile ? 14 : 18, zIndex: 30,
           background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
           border: `1px solid ${COLORS.surfaceLight}`,
-          borderRadius: 12, padding: "9px 16px", cursor: "pointer",
+          borderRadius: 12, padding: isMobile ? "6px 10px" : "9px 16px", cursor: "pointer",
           backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: 8,
           transition: "all 0.3s ease",
           boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
         }}>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.12em", color: COLORS.amber }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: isMobile ? 8 : 9, letterSpacing: "0.12em", color: COLORS.amber }}>
           {viewMode === "surface" ? "\u25C8 SURFACE" : "\u25CE PLANET"}
         </span>
       </button>
@@ -2884,27 +3278,27 @@ export default function Coil() {
       {selectedThought && !selectedCluster && <ThoughtPopup thought={selectedThought} clusters={clusters} onClose={() => setSelectedThought(null)} onViewCluster={(c) => { setSelectedThought(null); setSelectedCluster(c); }} />}
 
       {/* Input */}
-      <div style={{ position: "absolute", bottom: 28, left: "50%", transform: "translateX(-50%)", width: "88%", maxWidth: 480, zIndex: 20, animation: "fadeUp 1s ease 0.6s both" }}>
-        <div style={{
+      <div style={{ position: "absolute", bottom: isMobile ? 14 : 28, left: "50%", transform: "translateX(-50%)", width: isMobile ? "70%" : "88%", maxWidth: isMobile ? 340 : 480, zIndex: 20, animation: "fadeUp 1s ease 0.6s both" }}>
+        {!isMobile && <div style={{
           fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: "0.25em",
           color: inputFocused ? COLORS.amber : COLORS.textMuted,
           marginBottom: 10, marginLeft: 6, transition: "color 0.5s ease",
           textShadow: inputFocused ? `0 0 12px ${COLORS.amber}44` : "none",
         }}>
           WHAT'S LOOPING?
-        </div>
+        </div>}
         <div style={{ position: "relative", borderRadius: 12 }}>
           <textarea value={inputText} onChange={e => setInputText(e.target.value)}
             onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-            placeholder="dump whatever is on your mind..."
-            rows={2}
+            placeholder={isMobile ? "what's looping..." : "dump whatever is on your mind..."}
+            rows={isMobile ? 1 : 2}
             style={{
               width: "100%",
               background: `linear-gradient(135deg, ${COLORS.surface}ee, ${COLORS.surfaceMid}88)`,
               border: `1px solid ${inputFocused ? COLORS.amber + "44" : COLORS.surfaceLight}`,
-              borderRadius: 12, padding: "14px 50px 14px 18px",
-              color: COLORS.textPrimary, fontFamily: "'DM Sans', system-ui", fontSize: 14,
+              borderRadius: isMobile ? 10 : 12, padding: isMobile ? "10px 42px 10px 14px" : "14px 50px 14px 18px",
+              color: COLORS.textPrimary, fontFamily: "'DM Sans', system-ui", fontSize: isMobile ? 13 : 14,
               lineHeight: 1.7, resize: "none", outline: "none", boxSizing: "border-box",
               letterSpacing: "0.01em",
               boxShadow: `0 2px 10px rgba(0,0,0,0.3)`,
@@ -2912,8 +3306,8 @@ export default function Coil() {
             }} />
           <button onClick={handleSubmit} onMouseEnter={() => inputText.trim() && sound.play("hover")}
             style={{
-              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-              width: 30, height: 30, borderRadius: "50%",
+              position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+              width: isMobile ? 26 : 30, height: isMobile ? 26 : 30, borderRadius: "50%",
               border: "none",
               cursor: inputText.trim() ? "pointer" : "default",
               background: inputText.trim()
@@ -2921,7 +3315,7 @@ export default function Coil() {
                 : "transparent",
               color: inputText.trim() ? COLORS.bg : COLORS.textMuted,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 14, fontWeight: 500,
+              fontSize: isMobile ? 12 : 14, fontWeight: 500,
               transition: "all 0.3s ease", zIndex: 3,
               boxShadow: inputText.trim() ? `0 0 12px ${COLORS.amber}33` : "none",
               opacity: inputText.trim() ? 1 : 0.4,
@@ -2929,9 +3323,9 @@ export default function Coil() {
         </div>
       </div>
 
-      <div style={{ position: "absolute", bottom: 5, left: "50%", transform: "translateX(-50%)", fontFamily: "'JetBrains Mono', monospace", fontSize: 7, color: COLORS.textMuted, letterSpacing: "0.25em", opacity: 0.35, zIndex: 15, pointerEvents: "none" }}>
+      {!isMobile && <div style={{ position: "absolute", bottom: 5, left: "50%", transform: "translateX(-50%)", fontFamily: "'JetBrains Mono', monospace", fontSize: 7, color: COLORS.textMuted, letterSpacing: "0.25em", opacity: 0.35, zIndex: 15, pointerEvents: "none" }}>
         A LIRIO LABS INSTRUMENT
-      </div>
+      </div>}
 
       <style>{`
         @keyframes fadeUp { from{opacity:0;transform:translateX(-50%) translateY(20px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
